@@ -163,6 +163,7 @@ maki.api.register_tool({
       },
     },
   },
+  permission = "run",
   permission_scopes = function(input)
     local command = input.command
     if not command or command:match("^%s*$") then
@@ -259,6 +260,7 @@ already exited.]],
       id = { type = "integer", description = "Monitor id returned by `monitor`", required = true },
     },
   },
+  permission = "run",
   permission_scopes = function(input)
     if input.id then
       local info = maki.fn.jobinfo(input.id)
@@ -293,6 +295,7 @@ Returns each monitor's id, command, pid, status, and how long it ran.]],
       },
     },
   },
+  permission = "run",
   permission_scopes = function()
     return { scopes = { "monitor_list" }, force_prompt = false }
   end,
@@ -338,6 +341,7 @@ instead of "not found". For the full output, `read` the log paths.]],
       id = { type = "integer", description = "Monitor id returned by `monitor`", required = true },
     },
   },
+  permission = "run",
   permission_scopes = function()
     return { scopes = { "monitor_peek" }, force_prompt = false }
   end,
@@ -368,6 +372,7 @@ process. Default wait is 30s, max 10 minutes. timeout_ms 0 is an immediate peek.
       },
     },
   },
+  permission = "run",
   permission_scopes = function()
     return { scopes = { "monitor_wait" }, force_prompt = false }
   end,

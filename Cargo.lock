@@ -1586,9 +1586,9 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
-version = "2.14.0"
+version = "2.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d466e9454f08e4a911e14806c24e16fba1b4c121d1ea474396f396069cf949d9"
+checksum = "07aa2048142242915a31d35844fb311e0e53fcca590c3a0a40dcf1b841fa09eb"
 dependencies = [
  "equivalent",
  "hashbrown 0.17.1",
@@ -1948,7 +1948,7 @@ dependencies = [
 [[package]]
 name = "maki-agent"
 version = "0.4.12"
-source = "git+https://github.com/lu-zero/maki?rev=0f5387cf29de8a5ba9d2fd18f4aab86281fe84a2#0f5387cf29de8a5ba9d2fd18f4aab86281fe84a2"
+source = "git+https://github.com/lu-zero/maki?rev=4d847507a0f23a07adc3074fbb1f9e148fb33c53#4d847507a0f23a07adc3074fbb1f9e148fb33c53"
 dependencies = [
  "arc-swap",
  "async-io",
@@ -1990,7 +1990,7 @@ dependencies = [
 [[package]]
 name = "maki-config"
 version = "0.4.12"
-source = "git+https://github.com/lu-zero/maki?rev=0f5387cf29de8a5ba9d2fd18f4aab86281fe84a2#0f5387cf29de8a5ba9d2fd18f4aab86281fe84a2"
+source = "git+https://github.com/lu-zero/maki?rev=4d847507a0f23a07adc3074fbb1f9e148fb33c53#4d847507a0f23a07adc3074fbb1f9e148fb33c53"
 dependencies = [
  "dotenvy",
  "globset",
@@ -1999,6 +1999,7 @@ dependencies = [
  "maki-storage",
  "serde",
  "serde_json",
+ "strum",
  "thiserror",
  "toml",
  "toml_edit 0.22.27",
@@ -2008,7 +2009,7 @@ dependencies = [
 [[package]]
 name = "maki-config-macro"
 version = "0.4.12"
-source = "git+https://github.com/lu-zero/maki?rev=0f5387cf29de8a5ba9d2fd18f4aab86281fe84a2#0f5387cf29de8a5ba9d2fd18f4aab86281fe84a2"
+source = "git+https://github.com/lu-zero/maki?rev=4d847507a0f23a07adc3074fbb1f9e148fb33c53#4d847507a0f23a07adc3074fbb1f9e148fb33c53"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2018,7 +2019,7 @@ dependencies = [
 [[package]]
 name = "maki-highlight"
 version = "0.4.12"
-source = "git+https://github.com/lu-zero/maki?rev=0f5387cf29de8a5ba9d2fd18f4aab86281fe84a2#0f5387cf29de8a5ba9d2fd18f4aab86281fe84a2"
+source = "git+https://github.com/lu-zero/maki?rev=4d847507a0f23a07adc3074fbb1f9e148fb33c53#4d847507a0f23a07adc3074fbb1f9e148fb33c53"
 dependencies = [
  "serde_json",
  "syntect",
@@ -2028,7 +2029,7 @@ dependencies = [
 [[package]]
 name = "maki-interpreter"
 version = "0.4.12"
-source = "git+https://github.com/lu-zero/maki?rev=0f5387cf29de8a5ba9d2fd18f4aab86281fe84a2#0f5387cf29de8a5ba9d2fd18f4aab86281fe84a2"
+source = "git+https://github.com/lu-zero/maki?rev=4d847507a0f23a07adc3074fbb1f9e148fb33c53#4d847507a0f23a07adc3074fbb1f9e148fb33c53"
 dependencies = [
  "get-size2",
  "monty",
@@ -2041,7 +2042,7 @@ dependencies = [
 [[package]]
 name = "maki-lua"
 version = "0.4.12"
-source = "git+https://github.com/lu-zero/maki?rev=0f5387cf29de8a5ba9d2fd18f4aab86281fe84a2#0f5387cf29de8a5ba9d2fd18f4aab86281fe84a2"
+source = "git+https://github.com/lu-zero/maki?rev=4d847507a0f23a07adc3074fbb1f9e148fb33c53#4d847507a0f23a07adc3074fbb1f9e148fb33c53"
 dependencies = [
  "arc-swap",
  "async-lock",
@@ -2119,7 +2120,7 @@ dependencies = [
 [[package]]
 name = "maki-lua-macro"
 version = "0.4.12"
-source = "git+https://github.com/lu-zero/maki?rev=0f5387cf29de8a5ba9d2fd18f4aab86281fe84a2#0f5387cf29de8a5ba9d2fd18f4aab86281fe84a2"
+source = "git+https://github.com/lu-zero/maki?rev=4d847507a0f23a07adc3074fbb1f9e148fb33c53#4d847507a0f23a07adc3074fbb1f9e148fb33c53"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2129,7 +2130,7 @@ dependencies = [
 [[package]]
 name = "maki-markdown"
 version = "0.4.12"
-source = "git+https://github.com/lu-zero/maki?rev=0f5387cf29de8a5ba9d2fd18f4aab86281fe84a2#0f5387cf29de8a5ba9d2fd18f4aab86281fe84a2"
+source = "git+https://github.com/lu-zero/maki?rev=4d847507a0f23a07adc3074fbb1f9e148fb33c53#4d847507a0f23a07adc3074fbb1f9e148fb33c53"
 dependencies = [
  "maki-highlight",
  "unicode-width",
@@ -2149,7 +2150,7 @@ dependencies = [
 [[package]]
 name = "maki-otel"
 version = "0.4.12"
-source = "git+https://github.com/lu-zero/maki?rev=0f5387cf29de8a5ba9d2fd18f4aab86281fe84a2#0f5387cf29de8a5ba9d2fd18f4aab86281fe84a2"
+source = "git+https://github.com/lu-zero/maki?rev=4d847507a0f23a07adc3074fbb1f9e148fb33c53#4d847507a0f23a07adc3074fbb1f9e148fb33c53"
 dependencies = [
  "fastrand",
  "flate2",
@@ -2167,7 +2168,7 @@ dependencies = [
 [[package]]
 name = "maki-pack"
 version = "0.4.12"
-source = "git+https://github.com/lu-zero/maki?rev=0f5387cf29de8a5ba9d2fd18f4aab86281fe84a2#0f5387cf29de8a5ba9d2fd18f4aab86281fe84a2"
+source = "git+https://github.com/lu-zero/maki?rev=4d847507a0f23a07adc3074fbb1f9e148fb33c53#4d847507a0f23a07adc3074fbb1f9e148fb33c53"
 dependencies = [
  "fs4",
  "serde",
@@ -2180,7 +2181,7 @@ dependencies = [
 [[package]]
 name = "maki-providers"
 version = "0.4.12"
-source = "git+https://github.com/lu-zero/maki?rev=0f5387cf29de8a5ba9d2fd18f4aab86281fe84a2#0f5387cf29de8a5ba9d2fd18f4aab86281fe84a2"
+source = "git+https://github.com/lu-zero/maki?rev=4d847507a0f23a07adc3074fbb1f9e148fb33c53#4d847507a0f23a07adc3074fbb1f9e148fb33c53"
 dependencies = [
  "base64",
  "fastrand",
@@ -2210,7 +2211,7 @@ dependencies = [
 [[package]]
 name = "maki-storage"
 version = "0.4.12"
-source = "git+https://github.com/lu-zero/maki?rev=0f5387cf29de8a5ba9d2fd18f4aab86281fe84a2#0f5387cf29de8a5ba9d2fd18f4aab86281fe84a2"
+source = "git+https://github.com/lu-zero/maki?rev=4d847507a0f23a07adc3074fbb1f9e148fb33c53#4d847507a0f23a07adc3074fbb1f9e148fb33c53"
 dependencies = [
  "bs58",
  "etcetera",
