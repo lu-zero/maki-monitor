@@ -58,6 +58,17 @@ local function file_size(path)
   return meta and meta.size
 end
 
+-- A line can be delivered before the handler's own mkdir lands, so the first
+-- append retries once it has made the directory. Without this, early output
+-- from a fast command is lost from the log while the in-memory tail keeps it.
+local function append_log(session, id, path, line)
+  local ok = maki.fs.append(path, line .. "\n")
+  if not ok and path then
+    maki.fs.mkdir(monitor_dir(session, id), { parents = true })
+    maki.fs.append(path, line .. "\n")
+  end
+end
+
 local function write_meta(session, id, fields)
   local path = meta_path(session, id)
   if not path then
@@ -184,30 +195,23 @@ maki.api.register_tool({
       wake = true
     end
 
+    local meta = { command = input.command, cwd = input.cwd, session = session }
+
     local ok, id_or_err = pcall(maki.fn.jobstart, input.command, {
       scope = { session = session },
       cwd = input.cwd,
       tail = input.tail,
       on_stdout = function(job_id, line)
-        local path = stdout_path(session, job_id)
-        if path then
-          maki.fs.append(path, line .. "\n")
-        end
+        append_log(session, job_id, stdout_path(session, job_id), line)
       end,
       on_stderr = function(job_id, line)
-        local path = stderr_path(session, job_id)
-        if path then
-          maki.fs.append(path, line .. "\n")
-        end
+        append_log(session, job_id, stderr_path(session, job_id), line)
       end,
       on_exit = function(job_id, code)
-        write_meta(session, job_id, {
-          id = job_id,
-          command = input.command,
-          cwd = input.cwd,
-          session = session,
-          exit_code = code,
-        })
+        meta.id = job_id
+        meta.exit_code = code
+        meta.finished = os.time()
+        write_meta(session, job_id, meta)
         if notify_on_success or code ~= 0 then
           maki.session.notify(
             string.format('[job %d] "%s" exited with code %d', job_id, input.command, code),
@@ -225,14 +229,10 @@ maki.api.register_tool({
     if dir then
       maki.fs.mkdir(dir, { parents = true })
       local info = maki.fn.jobinfo(id)
-      write_meta(session, id, {
-        id = id,
-        command = input.command,
-        cwd = input.cwd,
-        session = session,
-        pid = info and info.pid,
-        started = os.time(),
-      })
+      meta.id = id
+      meta.pid = info and info.pid
+      meta.started = os.time()
+      write_meta(session, id, meta)
     end
 
     local msg = "monitor " .. id .. " started: " .. input.command

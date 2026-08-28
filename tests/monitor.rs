@@ -110,10 +110,12 @@ fn monitor_plugin_writes_logs_and_reports_after_exit() {
             .then_some(meta)
             .filter(|m| m.contains(&format!("\"id\":{id}")))
     });
-    assert!(
-        meta.contains("echo hello; exit 0"),
-        "meta.json should record the command: {meta}"
-    );
+    for field in ["\"command\"", "\"pid\"", "\"started\"", "\"finished\""] {
+        assert!(
+            meta.contains(field),
+            "meta.json must keep {field} through the exit rewrite: {meta}"
+        );
+    }
 
     poll_until("exit notification never reached the session mailbox", || {
         mailbox
