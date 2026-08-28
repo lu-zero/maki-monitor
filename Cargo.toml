@@ -6,8 +6,8 @@ license = "MIT"
 publish = false
 
 [dev-dependencies]
-maki-agent = { path = "../maki/maki-agent" }
-maki-lua = { path = "../maki/maki-lua" }
-maki-storage = { path = "../maki/maki-storage" }
+maki-agent = { git = "https://github.com/lu-zero/maki", rev = "0f5387cf29de8a5ba9d2fd18f4aab86281fe84a2" }
+maki-lua = { git = "https://github.com/lu-zero/maki", rev = "0f5387cf29de8a5ba9d2fd18f4aab86281fe84a2" }
+maki-storage = { git = "https://github.com/lu-zero/maki", rev = "0f5387cf29de8a5ba9d2fd18f4aab86281fe84a2" }
 serde_json = "1"
 smol = "2"

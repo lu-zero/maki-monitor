@@ -110,5 +110,6 @@ The tests load the plugin through the real `maki-lua` host:
 just test
 ```
 
-Dev-dependencies point at a sibling `../maki` checkout. Point them at a git
-revision instead when testing against a release.
+Dev-dependencies pin a revision of `lu-zero/maki`. Move the pin forward when
+the host gains something the plugin wants, and re-point at `tontinton/maki`
+once the extraction lands there.
