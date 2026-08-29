@@ -1,4 +1,6 @@
+local MAX_WAIT_MS = 600000
 local MAX_TAIL_BYTES = 262144
+local WAIT_TIMEOUT_ERR = "monitor_wait: timeout_ms must be an integer of at least 1"
 
 local description = [[Spawn a long-running command you own (a test suite, build, or server).
 The command keeps running after this tool returns. You will be notified in this
@@ -6,9 +8,10 @@ session when it exits, including on success. A new turn starts when the session
 is idle unless you set `wake = false`.
 
 Do not `sleep` or poll. Keep working; the exit observation includes log paths
-and a short tail. `monitor_wait` and `monitor_peek` return snapshots without
-blocking, so the session stays free while a monitor runs. Use `read` on the
-log paths for a post-mortem. Do not `cat` them through bash.
+and a short tail. `monitor_peek` reads the current output on demand and
+never parks. `monitor_wait` always parks this turn until the monitor exits
+or its timeout passes. Use `read` on the log paths for a post-mortem. Do
+not `cat` them through bash.
 
 Logs are always written to a per-monitor directory (stdout.log, stderr.log,
 meta.json). `monitor_list` shows this session's live and recently-exited
@@ -222,7 +225,7 @@ adopt()
 
 maki.api.register_prompt_hint({
   slot = "tool_usage",
-  content = "- Use monitor for a test, build, or server that should outlive the tool call. You will be notified when it exits. Do not bash-sleep or poll; monitor_wait never blocks, it returns a snapshot. Read the log files for the full output.",
+  content = "- Use monitor for a test, build, or server that should outlive the tool call. You will be notified when it exits. Do not bash-sleep or poll; keep working or ask the user questions. monitor_peek reads current output, and monitor_wait parks the turn until exit or its timeout.",
 })
 
 maki.api.register_tool({
@@ -324,7 +327,7 @@ maki.api.register_tool({
       .. maki.fs.joinpath(dir, "stderr.log")
       .. "\nmeta: "
       .. maki.fs.joinpath(dir, "meta.json")
-      .. "\nYou will be notified when it exits. Do not sleep or poll. monitor_wait and monitor_peek return snapshots without waiting. Read the log files for the full output."
+      .. "\nYou will be notified when it exits. Do not sleep or poll. monitor_peek reads current output; monitor_wait parks the turn until exit or its timeout. Read the log files for the full output."
   end,
 })
 
@@ -439,19 +442,21 @@ instead of "not found". For the full output, `read` the log paths.]],
 maki.api.register_tool({
   name = "monitor_wait",
   kind = "execute",
-  description = [[Return a snapshot of a monitor without blocking the conversation.
+  description = [[Park this turn until a monitor exits, or until the timeout passes.
 
-The call returns at once whether the monitor is running or finished; the exit
-notification arrives on its own. While a monitor runs, keep working or ask
-the user questions. Do not call this in a loop. `timeout_ms` is accepted for
-compatibility and ignored.]],
+Always blocks for up to timeout_ms. A monitor that exits in time reports its
+exit code, log paths, and output tail; a timeout reports the current snapshot
+instead and leaves the monitor intact, so you can wait again. The exit
+notification reaches the session on its own either way. Use monitor_peek to
+look without parking.]],
   schema = {
     type = "object",
     properties = {
       id = { type = "integer", description = "Monitor id returned by `monitor`", required = true },
       timeout_ms = {
         type = "integer",
-        description = "Accepted for compatibility. The call never blocks, so this is ignored.",
+        description = "How long to park: until exit or this cap, whichever comes first (max 600000).",
+        required = true,
       },
     },
   },
@@ -460,16 +465,33 @@ compatibility and ignored.]],
     return { scopes = { "monitor_wait" }, force_prompt = false }
   end,
   handler = function(input)
-    local info = maki.fn.jobinfo(input.id)
-    if not info or not info.session then
-      return { llm_output = "error: not found", is_error = true }
+    local timeout_ms = input.timeout_ms
+    if timeout_ms < 1 then
+      return { llm_output = WAIT_TIMEOUT_ERR, is_error = true }
     end
-    local dir, meta = find_monitor(info.session, input.id)
-    local text = format_snapshot(info, dir, meta)
-    if info.status == "running" then
-      return text
+    if timeout_ms > MAX_WAIT_MS then
+      timeout_ms = MAX_WAIT_MS
+    end
+
+    local ok, result = pcall(maki.fn.jobwait, input.id, timeout_ms)
+    if not ok then
+      return { llm_output = "error: " .. tostring(result), is_error = true }
+    end
+
+    local info = maki.fn.jobinfo(input.id)
+    if not result then
+      if not info or not info.session then
+        return { llm_output = "error: not found", is_error = true }
+      end
+      local dir, meta = find_monitor(info.session, input.id)
+      return format_snapshot(info, dir, meta)
         .. "\nstill running. The exit will notify this session on its own; keep working or ask the user questions meanwhile."
     end
-    return text
+
+    if not info or not info.session then
+      return string.format("monitor %d exited with code %d", input.id, result.exit_code)
+    end
+    local dir, meta = find_monitor(info.session, input.id)
+    return format_snapshot(info, dir, meta)
   end,
 })

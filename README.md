@@ -14,7 +14,7 @@ exit                  one observation: exit code, log paths, short tail
                       an idle TUI session starts a new turn on it
 
 monitor_peek          look at output now, without waiting
-monitor_wait          snapshot without blocking; the exit notifies on its own
+monitor_wait          park the turn until exit or a timeout
 read stdout/stderr    the full output, during or after the run
 monitor_stop          kill the process group, safe after exit
 ```
@@ -51,7 +51,7 @@ packages, approvals, and headless installs.
 |---|---|
 | `monitor` | Start a supervised command and return at once |
 | `monitor_peek` | Recent stdout, stderr, status, and log paths |
-| `monitor_wait` | Snapshot without blocking; the exit notifies on its own |
+| `monitor_wait` | Park the turn until exit or the timeout |
 | `monitor_list` | Live and recently exited monitors of the session |
 | `monitor_stop` | Kill one monitor by id |
 
@@ -69,9 +69,14 @@ packages, approvals, and headless installs.
 
 ### monitor_wait
 
-The call never blocks. It returns the same snapshot as `monitor_peek` and
-says so when the monitor is still running. `timeout_ms` is accepted for
-compatibility and ignored.
+The call always parks: it waits until the monitor exits or `timeout_ms`
+passes, 600000 ms at most, and reports the snapshot either way. A monitor
+that exits in time reports its exit code and output tail; a timeout reports
+the current state and leaves the monitor usable, so a later wait still works
+and the exit notification still lands.
+
+A parked call holds the turn, so agents are steered to keep working and let
+the notification start the next turn. `monitor_peek` is the read.
 
 ## Notifications
 
@@ -80,9 +85,10 @@ the log paths and a short tail. With `wake = true` an idle TUI session starts
 a turn on it. In a headless run the observation joins the session and the
 next turn sees it.
 
-Agents are told to keep working after starting a monitor. Waiting never
-stalls the conversation: `monitor_wait` returns at once, and the exit
-observation starts the next turn.
+Agents are told to keep working after starting a monitor. Waiting does not
+have to stall the conversation: the exit observation starts the next turn,
+and `monitor_peek` reads on demand. `monitor_wait` parks the turn only when
+the agent calls it, and it always carries a timeout.
 
 ## Logs
 

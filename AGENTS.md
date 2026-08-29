@@ -10,7 +10,7 @@ maki-monitor is a standalone maki plugin that supervises long-running commands: 
 - Jobs write their own logs: the handler `mkdir`s the monitor directory before `jobstart`, which takes `stdout` and `stderr` file paths. Do not read output back through `on_stdout` callbacks.
 - `meta.json` on disk is the source of truth: it carries `notify_on_success`, `wake`, and `tail`, and `on_exit` rewrites it wholesale. Adoption after a reload rebuilds the exit callback from it.
 - Never call a UI roundtrip (`maki.session.current`, `maki.session.list`) at load time. The UI loop drains `UiAction` between frames only, so a load-time call waits forever. Adoption works around this by listing jobs without a session filter; each job snapshot carries its own session.
-- Never block a tool on `jobwait`. A timed-out wait takes the job's event receiver and never gives it back: the exit callback is dead from then on. `monitor_wait` returns a snapshot at once and the exit notification does the waking.
+- `jobwait` at the pinned revision is timeout-safe: it checks the job's event receiver out and restores it on the way out, delivers `on_stdout`, `on_stderr`, and `on_exit` while parked, and answers an already-exited job from its snapshot. `monitor_peek` is the only read; `monitor_wait` always parks until exit or `timeout_ms` (at least 1, at most 600000), because a parked call holds the turn.
 
 ## Testing
 

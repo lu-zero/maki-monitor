@@ -187,9 +187,34 @@ fn session_focus_change_rearms_the_exit_callback() {
     );
 }
 
+#[test]
+fn monitor_wait_requires_a_positive_timeout() {
+    let (reg, _host) = monitor_host();
+    let entry = reg.get("monitor_wait").unwrap();
+
+    let missing = entry.tool.parse(&json!({ "id": 1 }));
+    assert!(
+        missing.is_err(),
+        "monitor_wait must require timeout_ms in its schema"
+    );
+
+    const ZERO_TIMEOUT_ERR: &str = "timeout_ms must be an integer of at least 1";
+    let zero = exec_tool(&reg, "monitor_wait", json!({ "id": 1, "timeout_ms": 0 }));
+    match zero {
+        Ok(text) => assert!(
+            text.contains(ZERO_TIMEOUT_ERR),
+            "zero timeout should be rejected: {text}"
+        ),
+        Err(err) => assert!(
+            err.contains(ZERO_TIMEOUT_ERR),
+            "zero timeout should be rejected: {err}"
+        ),
+    }
+}
+
 #[cfg(unix)]
 #[test]
-fn monitor_wait_returns_at_once_and_keeps_the_exit_callback() {
+fn monitor_wait_times_out_without_deafening_the_job() {
     let (reg, _host) = monitor_host();
     let session = maki_storage::id::MakiId::generate();
     let mailbox = maki_agent::SessionMailbox::register(session);
@@ -208,32 +233,80 @@ fn monitor_wait_returns_at_once_and_keeps_the_exit_callback() {
         .unwrap_or_else(|| panic!("expected a monitor id in: {started}"));
 
     let began = Instant::now();
-    for _ in 0..2 {
-        let wait = exec_tool(
-            &reg,
-            "monitor_wait",
-            json!({ "id": id, "timeout_ms": 600000 }),
-        )
-        .unwrap();
-        assert!(
-            wait.contains("still running"),
-            "wait should report the running monitor without blocking: {wait}"
-        );
-    }
+    let wait = exec_tool(&reg, "monitor_wait", json!({ "id": id, "timeout_ms": 300 })).unwrap();
+    assert!(
+        wait.contains("still running"),
+        "a timed-out park should report the running monitor: {wait}"
+    );
     assert!(
         began.elapsed() < Duration::from_secs(1),
-        "monitor_wait blocked for {:?}; it must return at once",
+        "park ran for {:?}; the 300ms timeout must cap it",
         began.elapsed()
     );
 
-    poll_until("exit notification never arrived after two waits", || {
-        mailbox
-            .drain()
-            .iter()
-            .any(|m| {
-                m.user_text()
-                    .is_some_and(|t| t.contains(&format!("[job {id}]")))
-            })
-            .then_some(String::new())
-    });
+    poll_until(
+        "exit notification never arrived after a timed-out park",
+        || {
+            mailbox
+                .drain()
+                .iter()
+                .any(|m| {
+                    m.user_text()
+                        .is_some_and(|t| t.contains(&format!("[job {id}]")))
+                })
+                .then_some(String::new())
+        },
+    );
+
+    let peek = exec_tool(
+        &reg,
+        "monitor_wait",
+        json!({ "id": id, "timeout_ms": 1000 }),
+    )
+    .unwrap();
+    assert!(
+        peek.contains("exited with code 0"),
+        "the exited monitor must still answer after a timed-out park: {peek}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn monitor_wait_parks_until_exit_and_reports_the_tail() {
+    let (reg, _host) = monitor_host();
+    let session = maki_storage::id::MakiId::generate();
+    let sid = session.to_string();
+
+    let started = exec_tool(
+        &reg,
+        "monitor",
+        json!({ "command": "sleep 0.3; echo done; exit 0", "session": sid }),
+    )
+    .unwrap();
+    let id: u32 = started
+        .split_whitespace()
+        .nth(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(|| panic!("expected a monitor id in: {started}"));
+
+    let began = Instant::now();
+    let wait = exec_tool(
+        &reg,
+        "monitor_wait",
+        json!({ "id": id, "timeout_ms": 30000 }),
+    )
+    .unwrap();
+    assert!(
+        began.elapsed() >= Duration::from_millis(300),
+        "park returned early after {:?}",
+        began.elapsed()
+    );
+    assert!(
+        wait.contains("exited with code 0"),
+        "a parked wait should report the exit: {wait}"
+    );
+    assert!(
+        wait.contains("done"),
+        "the tail should include the job's output: {wait}"
+    );
 }
