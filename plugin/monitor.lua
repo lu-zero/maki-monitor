@@ -1,4 +1,4 @@
-local MAX_WAIT_MS = 600000
+local MAX_TAIL_BYTES = 262144
 
 local description = [[Spawn a long-running command you own (a test suite, build, or server).
 The command keeps running after this tool returns. You will be notified in this
@@ -6,15 +6,15 @@ session when it exits, including on success. A new turn starts when the session
 is idle unless you set `wake = false`.
 
 Do not `sleep` or poll. Keep working; the exit observation includes log paths
-and a short tail. Use `monitor_wait` only when you have no independent work
-left. Use `monitor_peek` to look now without waiting. Use `read` on the log
-paths for a post-mortem. Do not `cat` them through bash.
+and a short tail. `monitor_wait` and `monitor_peek` return snapshots without
+blocking, so the session stays free while a monitor runs. Use `read` on the
+log paths for a post-mortem. Do not `cat` them through bash.
 
 Logs are always written to a per-monitor directory (stdout.log, stderr.log,
 meta.json). `monitor_list` shows this session's live and recently-exited
 monitors; `monitor_stop` kills one (safe after exit).
 
-The monitor survives plugin reloads.]]
+The monitor and its exit notification survive plugin reloads.]]
 
 local function parse_session(input, ctx)
   if input.session and input.session ~= "" then
@@ -27,27 +27,12 @@ local function parse_session(input, ctx)
   return id
 end
 
-local function monitor_dir(session, id)
+local function session_dir(session)
   local root = maki.env.logs_dir()
   if not root then
     return nil
   end
-  return maki.fs.joinpath(root, session, "monitor-" .. id)
-end
-
-local function stdout_path(session, id)
-  local dir = monitor_dir(session, id)
-  return dir and maki.fs.joinpath(dir, "stdout.log")
-end
-
-local function stderr_path(session, id)
-  local dir = monitor_dir(session, id)
-  return dir and maki.fs.joinpath(dir, "stderr.log")
-end
-
-local function meta_path(session, id)
-  local dir = monitor_dir(session, id)
-  return dir and maki.fs.joinpath(dir, "meta.json")
+  return maki.fs.joinpath(root, session)
 end
 
 local function file_size(path)
@@ -58,37 +43,130 @@ local function file_size(path)
   return meta and meta.size
 end
 
--- A line can be delivered before the handler's own mkdir lands, so the first
--- append retries once it has made the directory. Without this, early output
--- from a fast command is lost from the log while the in-memory tail keeps it.
-local function append_log(session, id, path, line)
-  local ok = maki.fs.append(path, line .. "\n")
-  if not ok and path then
-    maki.fs.mkdir(monitor_dir(session, id), { parents = true })
-    maki.fs.append(path, line .. "\n")
-  end
-end
-
-local function write_meta(session, id, fields)
-  local path = meta_path(session, id)
-  if not path then
-    return
-  end
+local function write_json(path, fields)
   local encoded = maki.json.encode(fields)
   if encoded then
     maki.fs.atomic_write(path, encoded)
   end
 end
 
-local function format_paths(session, id)
-  local out_path = stdout_path(session, id)
-  if not out_path then
-    return ""
+local function read_json(path)
+  local text = maki.fs.read(path)
+  if not text then
+    return nil
   end
-  return "stdout: " .. out_path .. "\nstderr: " .. stderr_path(session, id) .. "\nmeta: " .. meta_path(session, id)
+  return maki.json.decode(text)
 end
 
-local function format_snapshot(info)
+local function next_dir(session)
+  local sdir = session_dir(session)
+  if not sdir then
+    return nil
+  end
+  for _ = 1, 10 do
+    local dir = maki.fs.joinpath(sdir, string.format("monitor-%d-%04x", os.time(), math.random(0, 65535)))
+    if not maki.fs.metadata(dir) then
+      return dir
+    end
+  end
+  return nil
+end
+
+local function find_monitor(session, id)
+  local sdir = session_dir(session)
+  if not sdir then
+    return nil
+  end
+  local entries = maki.fs.dir(sdir, { depth = 2 })
+  if not entries then
+    return nil
+  end
+  for _, entry in ipairs(entries) do
+    local rel = entry[1]
+    if entry[2] == "file" and rel:match("meta%.json$") then
+      local meta = read_json(maki.fs.joinpath(sdir, rel))
+      if meta and meta.id == id then
+        return maki.fs.joinpath(sdir, rel:match("^(.*)/meta%.json$")), meta
+      end
+    end
+  end
+  return nil
+end
+
+-- A spawned job writes its own logs, so the exit path only records the outcome
+-- and notifies. The same closure re-arms after a reload via jobattach.
+local function on_exit_for(session, dir, meta)
+  return function(job_id, code)
+    meta.id = job_id
+    meta.exit_code = code
+    meta.finished = os.time()
+    write_json(maki.fs.joinpath(dir, "meta.json"), meta)
+    if meta.notify_on_success == false and code == 0 then
+      return
+    end
+    maki.session.notify(
+      string.format('[job %d] "%s" exited with code %d', job_id, meta.command, code),
+      { session = session, wake = meta.wake ~= false }
+    )
+  end
+end
+
+local function read_tail(path, lines)
+  if not lines or lines < 1 then
+    return nil
+  end
+  local size = file_size(path)
+  if not size or size == 0 then
+    return nil
+  end
+  if size > MAX_TAIL_BYTES then
+    return nil
+  end
+  local text = maki.fs.read(path)
+  if not text or text == "" then
+    return nil
+  end
+  local all = {}
+  for line in text:gmatch("([^\n]*)\n") do
+    all[#all + 1] = line
+  end
+  if text:sub(-1) ~= "\n" then
+    all[#all + 1] = text:match("([^\n]+)$")
+  end
+  local out = {}
+  for i = math.max(1, #all - lines + 1), #all do
+    out[#out + 1] = all[i]
+  end
+  return table.concat(out, "\n")
+end
+
+local function format_paths(dir)
+  local out_path = maki.fs.joinpath(dir, "stdout.log")
+  local err_path = maki.fs.joinpath(dir, "stderr.log")
+  return string.format("\nstdout: %s (%s bytes)", out_path, file_size(out_path) or 0)
+    .. string.format("\nstderr: %s (%s bytes)", err_path, file_size(err_path) or 0)
+    .. "\nmeta: "
+    .. maki.fs.joinpath(dir, "meta.json")
+end
+
+local function format_tails(dir, meta)
+  if not meta then
+    return ""
+  end
+  local lines = meta.tail or 20
+  local text = ""
+  local out = read_tail(maki.fs.joinpath(dir, "stdout.log"), lines)
+  if out then
+    text = text .. "\n--- stdout tail ---\n" .. out
+  end
+  local err = read_tail(maki.fs.joinpath(dir, "stderr.log"), lines)
+  if err then
+    text = text .. "\n--- stderr tail ---\n" .. err
+  end
+  return text
+end
+
+local function format_snapshot(info, dir, meta)
   local header
   if info.status == "running" then
     header = string.format("monitor %d  [%ds]  %s  (pid %d)", info.id, info.elapsed_secs, info.command, info.pid)
@@ -101,34 +179,50 @@ local function format_snapshot(info)
       info.command
     )
   end
-  local out_path = info.session and stdout_path(info.session, info.id)
-  local err_path = info.session and stderr_path(info.session, info.id)
-  local mpath = info.session and meta_path(info.session, info.id)
-  if out_path then
-    header = header .. string.format("\nstdout: %s (%s bytes)", out_path, file_size(out_path) or 0)
-  end
-  if err_path then
-    header = header .. string.format("\nstderr: %s (%s bytes)", err_path, file_size(err_path) or 0)
-  end
-  if mpath then
-    header = header .. "\nmeta: " .. mpath
-  end
-  local chunks = { header }
-  if info.stdout_lines and #info.stdout_lines > 0 then
-    chunks[#chunks + 1] = "--- stdout tail ---\n" .. table.concat(info.stdout_lines, "\n")
-  end
-  if info.stderr_lines and #info.stderr_lines > 0 then
-    chunks[#chunks + 1] = "--- stderr tail ---\n" .. table.concat(info.stderr_lines, "\n")
-  end
-  if #chunks == 1 then
+  if not dir then
     return header .. "\n(no output captured)"
   end
-  return table.concat(chunks, "\n")
+  local text = header .. format_paths(dir) .. format_tails(dir, meta)
+  if text == header then
+    return header .. "\n(no output captured)"
+  end
+  return text
 end
+
+-- Reload drops the Lua exit callbacks, not the monitors. Adoption walks the
+-- plugin's job list: running jobs get their callback re-armed and jobs that
+-- exited while unloaded still get their meta written and their notification
+-- delivered. A UI roundtrip like maki.session.current() would wait forever at
+-- load time, so the list is taken without a session filter and each job
+-- carries its own session.
+local function adopt(session)
+  local jobs = maki.fn.joblist(session)
+  for _, job in ipairs(jobs or {}) do
+    local owner = session or job.session
+    if owner then
+      local dir, meta = find_monitor(owner, job.id)
+      if dir then
+        if job.status == "running" then
+          maki.fn.jobattach(job.id, { on_exit = on_exit_for(owner, dir, meta) })
+        elseif job.status == "exited" and not meta.exit_code then
+          on_exit_for(owner, dir, meta)(job.id, job.exit_code)
+        end
+      end
+    end
+  end
+end
+
+adopt()
+
+-- BISECT: maki.api.create_autocmd("SessionFocusChanged", {
+--   callback = function(ev)
+--     adopt(ev.data.session_id)
+--   end,
+-- })
 
 maki.api.register_prompt_hint({
   slot = "tool_usage",
-  content = "- Use monitor for a test, build, or server that should outlive the tool call. You will be notified when it exits. Do not bash-sleep or poll; use monitor_wait only when idle, and read the log files for the full output.",
+  content = "- Use monitor for a test, build, or server that should outlive the tool call. You will be notified when it exits. Do not bash-sleep or poll; monitor_wait never blocks, it returns a snapshot. Read the log files for the full output.",
 })
 
 maki.api.register_tool({
@@ -159,7 +253,7 @@ maki.api.register_tool({
       },
       tail = {
         type = "integer",
-        description = "Trailing lines per stream to keep for peek/notify (default 20, 0 disables)",
+        description = "Trailing lines per stream shown by peek/wait, read from the log files (default 20, 0 disables)",
       },
     },
   },
@@ -187,63 +281,50 @@ maki.api.register_tool({
       return { llm_output = "error: " .. (err or "no session"), is_error = true }
     end
 
-    local notify_on_success = input.notify_on_success
-    if notify_on_success == nil then
-      notify_on_success = true
+    local dir = next_dir(session)
+    if not dir then
+      return { llm_output = "error: could not create a monitor directory", is_error = true }
     end
-    local wake = input.wake
-    if wake == nil then
-      wake = true
-    end
+    maki.fs.mkdir(dir, { parents = true })
 
-    local meta = { command = input.command, cwd = input.cwd, session = session }
+    local meta = {
+      command = input.command,
+      cwd = input.cwd,
+      session = session,
+      notify_on_success = input.notify_on_success,
+      wake = input.wake,
+      tail = input.tail,
+    }
 
     local ok, id_or_err = pcall(maki.fn.jobstart, input.command, {
       scope = { session = session },
       cwd = input.cwd,
-      tail = input.tail,
-      on_stdout = function(job_id, line)
-        append_log(session, job_id, stdout_path(session, job_id), line)
-      end,
-      on_stderr = function(job_id, line)
-        append_log(session, job_id, stderr_path(session, job_id), line)
-      end,
-      on_exit = function(job_id, code)
-        meta.id = job_id
-        meta.exit_code = code
-        meta.finished = os.time()
-        write_meta(session, job_id, meta)
-        if notify_on_success or code ~= 0 then
-          maki.session.notify(
-            string.format('[job %d] "%s" exited with code %d', job_id, input.command, code),
-            { session = session, wake = wake }
-          )
-        end
-      end,
+      stdout = maki.fs.joinpath(dir, "stdout.log"),
+      stderr = maki.fs.joinpath(dir, "stderr.log"),
+      on_exit = on_exit_for(session, dir, meta),
     })
     if not ok then
       return { llm_output = "error: " .. tostring(id_or_err), is_error = true }
     end
     local id = id_or_err
 
-    local dir = monitor_dir(session, id)
-    if dir then
-      maki.fs.mkdir(dir, { parents = true })
-      local info = maki.fn.jobinfo(id)
-      meta.id = id
-      meta.pid = info and info.pid
-      meta.started = os.time()
-      write_meta(session, id, meta)
-    end
+    local info = maki.fn.jobinfo(id)
+    meta.id = id
+    meta.pid = info and info.pid
+    meta.started = os.time()
+    write_json(maki.fs.joinpath(dir, "meta.json"), meta)
 
-    local msg = "monitor " .. id .. " started: " .. input.command
-    local paths = format_paths(session, id)
-    if paths ~= "" then
-      msg = msg .. "\n" .. paths
-    end
-    msg = msg
-      .. "\nYou will be notified when it exits. Do not sleep or poll. Use monitor_wait only when idle. Read the log files for the full output."
-    return msg
+    return "monitor "
+      .. id
+      .. " started: "
+      .. input.command
+      .. "\nstdout: "
+      .. maki.fs.joinpath(dir, "stdout.log")
+      .. "\nstderr: "
+      .. maki.fs.joinpath(dir, "stderr.log")
+      .. "\nmeta: "
+      .. maki.fs.joinpath(dir, "meta.json")
+      .. "\nYou will be notified when it exits. Do not sleep or poll. monitor_wait and monitor_peek return snapshots without waiting. Read the log files for the full output."
   end,
 })
 
@@ -347,28 +428,30 @@ instead of "not found". For the full output, `read` the log paths.]],
   end,
   handler = function(input)
     local info = maki.fn.jobinfo(input.id)
-    if not info then
+    if not info or not info.session then
       return { llm_output = "error: not found", is_error = true }
     end
-    return format_snapshot(info)
+    local dir, meta = find_monitor(info.session, input.id)
+    return format_snapshot(info, dir, meta)
   end,
 })
 
 maki.api.register_tool({
   name = "monitor_wait",
   kind = "execute",
-  description = [[Wait for a monitor to finish, or return a snapshot when the timeout elapses.
+  description = [[Return a snapshot of a monitor without blocking the conversation.
 
-Use this only when you have no independent work left. You will already be
-notified on exit, so do not call this in a loop. Timeout does not kill the
-process. Default wait is 30s, max 10 minutes. timeout_ms 0 is an immediate peek.]],
+The call returns at once whether the monitor is running or finished; the exit
+notification arrives on its own. While a monitor runs, keep working or ask
+the user questions. Do not call this in a loop. `timeout_ms` is accepted for
+compatibility and ignored.]],
   schema = {
     type = "object",
     properties = {
       id = { type = "integer", description = "Monitor id returned by `monitor`", required = true },
       timeout_ms = {
         type = "integer",
-        description = "Maximum wait in milliseconds (default 30000, max 600000). 0 returns immediately.",
+        description = "Accepted for compatibility. The call never blocks, so this is ignored.",
       },
     },
   },
@@ -377,42 +460,16 @@ process. Default wait is 30s, max 10 minutes. timeout_ms 0 is an immediate peek.
     return { scopes = { "monitor_wait" }, force_prompt = false }
   end,
   handler = function(input)
-    local timeout_ms = input.timeout_ms
-    if timeout_ms and timeout_ms > MAX_WAIT_MS then
-      timeout_ms = MAX_WAIT_MS
-    end
-
-    local ok, result = pcall(maki.fn.jobwait, input.id, timeout_ms)
-    if not ok then
-      return { llm_output = "error: " .. tostring(result), is_error = true }
-    end
-
     local info = maki.fn.jobinfo(input.id)
-    if not result then
-      if not info then
-        return { llm_output = "error: not found", is_error = true }
-      end
-      return format_snapshot(info) .. "\n(wait timed out, still running)"
+    if not info or not info.session then
+      return { llm_output = "error: not found", is_error = true }
     end
-
-    local session = info and info.session
-    local command = (info and info.command) or ""
-    local header = string.format("monitor %d exited with code %d: %s", input.id, result.exit_code, command)
-    if result.truncated then
-      header = header .. "\n(reporting from the captured tail; read the log files for full output)"
+    local dir, meta = find_monitor(info.session, input.id)
+    local text = format_snapshot(info, dir, meta)
+    if info.status == "running" then
+      return text
+        .. "\nstill running. The exit will notify this session on its own; keep working or ask the user questions meanwhile."
     end
-    local paths = session and format_paths(session, input.id)
-    if paths and paths ~= "" then
-      header = header .. "\n" .. paths
-    end
-
-    local chunks = { header }
-    if result.stdout ~= "" then
-      chunks[#chunks + 1] = "--- stdout ---\n" .. result.stdout
-    end
-    if result.stderr ~= "" then
-      chunks[#chunks + 1] = "--- stderr ---\n" .. result.stderr
-    end
-    return table.concat(chunks, "\n")
+    return text
   end,
 })

@@ -141,9 +141,99 @@ fn monitor_plugin_writes_logs_and_reports_after_exit() {
         "monitor_list should report the exited monitor, got: {list}"
     );
 
-    host.event_handle().end_session(session);
+    host.event_handle()
+        .end_session(session, maki_lua::SessionEndReason::Shutdown);
     assert!(
         std::path::Path::new(&stdout_path).exists(),
         "SessionEnd must keep monitor logs so callers can collect them after the session ends"
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn session_focus_change_rearms_the_exit_callback() {
+    let (reg, host) = monitor_host();
+    let session = maki_storage::id::MakiId::generate();
+    let mailbox = maki_agent::SessionMailbox::register(session);
+    let sid = session.to_string();
+
+    let started = exec_tool(
+        &reg,
+        "monitor",
+        json!({ "command": "sleep 1; exit 0", "session": sid }),
+    )
+    .unwrap();
+    let id: u32 = started
+        .split_whitespace()
+        .nth(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(|| panic!("expected a monitor id in: {started}"));
+
+    host.event_handle()
+        .fire_autocmd("SessionFocusChanged", json!({ "session_id": sid }));
+
+    poll_until(
+        "exit notification never arrived after the focus change",
+        || {
+            mailbox
+                .drain()
+                .iter()
+                .any(|m| {
+                    m.user_text()
+                        .is_some_and(|t| t.contains(&format!("[job {id}]")))
+                })
+                .then_some(String::new())
+        },
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn monitor_wait_returns_at_once_and_keeps_the_exit_callback() {
+    let (reg, _host) = monitor_host();
+    let session = maki_storage::id::MakiId::generate();
+    let mailbox = maki_agent::SessionMailbox::register(session);
+    let sid = session.to_string();
+
+    let started = exec_tool(
+        &reg,
+        "monitor",
+        json!({ "command": "sleep 2; exit 0", "session": sid }),
+    )
+    .unwrap();
+    let id: u32 = started
+        .split_whitespace()
+        .nth(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(|| panic!("expected a monitor id in: {started}"));
+
+    let began = Instant::now();
+    for _ in 0..2 {
+        let wait = exec_tool(
+            &reg,
+            "monitor_wait",
+            json!({ "id": id, "timeout_ms": 600000 }),
+        )
+        .unwrap();
+        assert!(
+            wait.contains("still running"),
+            "wait should report the running monitor without blocking: {wait}"
+        );
+    }
+    assert!(
+        began.elapsed() < Duration::from_secs(1),
+        "monitor_wait blocked for {:?}; it must return at once",
+        began.elapsed()
+    );
+
+    poll_until("exit notification never arrived after two waits", || {
+        mailbox
+            .drain()
+            .iter()
+            .any(|m| {
+                m.user_text()
+                    .is_some_and(|t| t.contains(&format!("[job {id}]")))
+            })
+            .then_some(String::new())
+    });
 }

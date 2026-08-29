@@ -6,8 +6,8 @@ license = "MIT"
 publish = false
 
 [dev-dependencies]
-maki-agent = { git = "https://github.com/lu-zero/maki", rev = "4d847507a0f23a07adc3074fbb1f9e148fb33c53" }
-maki-lua = { git = "https://github.com/lu-zero/maki", rev = "4d847507a0f23a07adc3074fbb1f9e148fb33c53" }
-maki-storage = { git = "https://github.com/lu-zero/maki", rev = "4d847507a0f23a07adc3074fbb1f9e148fb33c53" }
+maki-agent = { git = "https://github.com/tontinton/maki", rev = "b14689365061d7b1c5fb0e6026e32f7cbe7d2a6f" }
+maki-lua = { git = "https://github.com/tontinton/maki", rev = "b14689365061d7b1c5fb0e6026e32f7cbe7d2a6f" }
+maki-storage = { git = "https://github.com/tontinton/maki", rev = "b14689365061d7b1c5fb0e6026e32f7cbe7d2a6f" }
 serde_json = "1"
 smol = "2"

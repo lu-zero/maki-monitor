@@ -14,7 +14,7 @@ exit                  one observation: exit code, log paths, short tail
                       an idle TUI session starts a new turn on it
 
 monitor_peek          look at output now, without waiting
-monitor_wait          block until exit or a timeout, when nothing else is left
+monitor_wait          snapshot without blocking; the exit notifies on its own
 read stdout/stderr    the full output, during or after the run
 monitor_stop          kill the process group, safe after exit
 ```
@@ -51,7 +51,7 @@ packages, approvals, and headless installs.
 |---|---|
 | `monitor` | Start a supervised command and return at once |
 | `monitor_peek` | Recent stdout, stderr, status, and log paths |
-| `monitor_wait` | Wait for exit, or report a snapshot at the timeout |
+| `monitor_wait` | Snapshot without blocking; the exit notifies on its own |
 | `monitor_list` | Live and recently exited monitors of the session |
 | `monitor_stop` | Kill one monitor by id |
 
@@ -65,12 +65,13 @@ packages, approvals, and headless installs.
 | `session` | string | calling session | Session that receives the exit observation |
 | `wake` | boolean | `true` | Start a turn when the session is idle (TUI only) |
 | `notify_on_success` | boolean | `true` | Set `false` to hear only about failures |
-| `tail` | integer | 20 | Lines kept in memory per stream, max 1024 |
+| `tail` | integer | 20 | Lines shown by peek/wait, read from the log files |
 
 ### monitor_wait
 
-`timeout_ms` caps the wait: 30000 by default, 600000 at most, `0` behaves
-like `monitor_peek`. A timeout does not kill the process.
+The call never blocks. It returns the same snapshot as `monitor_peek` and
+says so when the monitor is still running. `timeout_ms` is accepted for
+compatibility and ignored.
 
 ## Notifications
 
@@ -79,22 +80,31 @@ the log paths and a short tail. With `wake = true` an idle TUI session starts
 a turn on it. In a headless run the observation joins the session and the
 next turn sees it.
 
-Agents are told to keep working after starting a monitor and to reach for
-`monitor_wait` only when they have nothing else to do.
+Agents are told to keep working after starting a monitor. Waiting never
+stalls the conversation: `monitor_wait` returns at once, and the exit
+observation starts the next turn.
 
 ## Logs
 
 ```
-~/.local/logs/maki/{session}/monitor-{id}/
-  meta.json      command, pid, started, exit_code, finished
-  stdout.log     raw stdout
-  stderr.log     raw stderr
+~/.local/logs/maki/{session}/monitor-{stamp}-{id4}/
+  meta.json      command, cwd, session, pid, started, exit_code, finished
+  stdout.log     raw stdout, written by the job itself
+  stderr.log     raw stderr, written by the job itself
 ```
 
-Output lands in the files as it arrives, so a slow build can be followed
-while it runs. `peek` and the exit observation keep only a short tail in
-memory. The files are the source of truth for everything past that tail, and
-they stay after the session ends.
+The job writes its own streams to the files, so output lands as it arrives
+and nothing is buffered in the plugin. `peek` and the exit observation read
+a short tail from the files. The files are the source of truth for
+everything past that tail, and they stay after the session ends.
+
+## Reloads
+
+A `/reload` drops the Lua callbacks of running monitors, not the monitors.
+When the plugin loads it finds all of its monitors again, and a focus change
+re-checks the session that gained focus; either path re-arms the exit
+callback. A monitor that exited while the plugin was unloaded still gets its
+meta written and its notification delivered.
 
 ## Permissions
 
