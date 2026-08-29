@@ -9,3 +9,6 @@ lint:
 
 test:
     cargo nextest run
+
+fmt-lua:
+    stylua plugin/

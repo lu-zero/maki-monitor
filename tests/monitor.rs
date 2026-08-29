@@ -16,8 +16,13 @@ fn monitor_host() -> (Arc<ToolRegistry>, PluginHost) {
     let reg = Arc::new(ToolRegistry::new());
     let host = PluginHost::new(Arc::clone(&reg)).unwrap();
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    host.load_package("monitor", root, PluginPermissions::trusted(), Default::default())
-        .unwrap();
+    host.load_package(
+        "monitor",
+        root,
+        PluginPermissions::trusted(),
+        Default::default(),
+    )
+    .unwrap();
     (reg, host)
 }
 
@@ -27,13 +32,12 @@ fn exec_tool(reg: &ToolRegistry, name: &str, input: serde_json::Value) -> Result
         .unwrap_or_else(|| panic!("tool {name} not registered"));
     let inv = entry.tool.parse(&input).expect("parse failed");
     let ctx = maki_agent::tools::test_support::stub_ctx(&maki_agent::AgentMode::Build);
-    smol::block_on(async { inv.execute(&ctx).await }).output.map_or_else(
-        Err,
-        |out| match out {
+    smol::block_on(async { inv.execute(&ctx).await })
+        .output
+        .map_or_else(Err, |out| match out {
             ToolOutput::Plain(s) => Ok(s.text),
             other => panic!("unexpected output: {other:?}"),
-        },
-    )
+        })
 }
 
 fn poll_until(deadline_msg: &str, f: impl Fn() -> Option<String>) -> String {
@@ -117,13 +121,19 @@ fn monitor_plugin_writes_logs_and_reports_after_exit() {
         );
     }
 
-    poll_until("exit notification never reached the session mailbox", || {
-        mailbox
-            .drain()
-            .iter()
-            .any(|m| m.user_text().is_some_and(|t| t.contains(&format!("[job {id}]"))))
-            .then_some(String::new())
-    });
+    poll_until(
+        "exit notification never reached the session mailbox",
+        || {
+            mailbox
+                .drain()
+                .iter()
+                .any(|m| {
+                    m.user_text()
+                        .is_some_and(|t| t.contains(&format!("[job {id}]")))
+                })
+                .then_some(String::new())
+        },
+    );
 
     let list = exec_tool(&reg, "monitor_list", json!({ "session": sid })).unwrap();
     assert!(

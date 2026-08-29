@@ -29,7 +29,7 @@ Assert Lua-visible effects (callback output, mailbox messages, meta contents), n
 - `plugin/monitor.lua` — the whole plugin: path helpers, `write_meta`, the five `register_tool` specs, and the tool-usage prompt hint.
 - `plugin.toml` — `min_maki_version` and the `[permissions]` request.
 - `tests/monitor.rs` — host harness and the two integration tests.
-- `justfile` — check, lint, test.
+- `justfile` — check, lint, test, fmt-lua.
 
 ## Docs
 

@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+
+jobs:
+  fmt:
+    name: Format (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo fmt --all -- --check
+
+  fmt-lua:
+    name: Format (Lua)
+    runs-on: ubuntu-latest
+    env:
+      STYLUA_VERSION: v2.4.1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install stylua
+        run: |
+          curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors -o stylua.zip \
+            "https://github.com/JohnnyMorganz/StyLua/releases/download/${STYLUA_VERSION}/stylua-linux-x86_64.zip"
+          unzip -o stylua.zip stylua
+          rm stylua.zip
+      - run: ./stylua --check plugin/
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    env:
+      OPENSSL_NO_VENDOR: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --tests -- -D warnings
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    env:
+      OPENSSL_NO_VENDOR: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+      - run: cargo nextest run
