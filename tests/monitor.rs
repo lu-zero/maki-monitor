@@ -310,3 +310,98 @@ fn monitor_wait_parks_until_exit_and_reports_the_tail() {
         "the tail should include the job's output: {wait}"
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn monitor_list_reports_only_its_own_monitors() {
+    const NOISE_PLUGIN: &str = r#"
+maki.api.register_tool({
+  name = "noise_job",
+  description = "Spawn an unrelated session job",
+  handler = function(input)
+    local ok, id = pcall(maki.fn.jobstart, input.command, { scope = { session = input.session } })
+    if not ok then
+      return { llm_output = tostring(id), is_error = true }
+    end
+    return "job " .. id
+  end,
+})
+"#;
+
+    let (reg, host) = monitor_host();
+    host.load_source_with_opts("noise", NOISE_PLUGIN, Default::default())
+        .unwrap();
+    let session = maki_storage::id::MakiId::generate();
+    let sid = session.to_string();
+
+    let started = exec_tool(
+        &reg,
+        "monitor",
+        json!({ "command": "sleep 30; exit 0", "session": sid }),
+    )
+    .unwrap();
+    let id: u32 = started
+        .split_whitespace()
+        .nth(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(|| panic!("expected a monitor id in: {started}"));
+
+    let noise = exec_tool(
+        &reg,
+        "noise_job",
+        json!({ "command": "sleep 30", "session": sid }),
+    )
+    .unwrap();
+    let noise_id: u32 = noise
+        .split_whitespace()
+        .nth(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(|| panic!("expected a job id in: {noise}"));
+
+    let list = exec_tool(&reg, "monitor_list", json!({ "session": sid })).unwrap();
+    assert!(
+        list.contains(&format!("monitor {id}")) || list.contains(&format!("  {id}  ")),
+        "monitor_list should report its own monitor, got: {list}"
+    );
+    assert!(
+        !list.contains(&noise_id.to_string()),
+        "monitor_list must not report the unrelated job {noise_id}, got: {list}"
+    );
+
+    exec_tool(&reg, "monitor_stop", json!({ "id": id })).unwrap();
+    host.event_handle()
+        .end_session(session, maki_lua::SessionEndReason::Shutdown);
+}
+
+#[cfg(unix)]
+#[test]
+fn monitor_peek_tails_logs_larger_than_the_tail_window() {
+    let (reg, _host) = monitor_host();
+    let session = maki_storage::id::MakiId::generate();
+    let sid = session.to_string();
+
+    let started = exec_tool(
+        &reg,
+        "monitor",
+        json!({ "command": "yes overflow | head -c 400000", "session": sid }),
+    )
+    .unwrap();
+    let id: u32 = started
+        .split_whitespace()
+        .nth(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(|| panic!("expected a monitor id in: {started}"));
+
+    let peek = poll_until("monitor_peek never tailed the large log", || {
+        let peek = exec_tool(&reg, "monitor_peek", json!({ "id": id })).unwrap();
+        peek.contains("--- stdout tail ---").then_some(peek)
+    });
+    assert!(
+        peek.contains("overflow"),
+        "the tail of a 400KB log must survive, got: {peek}"
+    );
+    assert!(
+        !peek.contains("(no output captured)"),
+        "a large log is not a missing log, got: {peek}"
+    );
+}

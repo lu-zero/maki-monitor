@@ -75,7 +75,10 @@ local function next_dir(session)
   return nil
 end
 
-local function find_monitor(session, id)
+-- meta.json is the source of truth: a scan answers for every monitor this
+-- plugin started, including ones the host has already reaped, and never
+-- reports unrelated session jobs the way a joblist would.
+local function scan_monitors(session)
   local sdir = session_dir(session)
   if not sdir then
     return nil
@@ -84,16 +87,28 @@ local function find_monitor(session, id)
   if not entries then
     return nil
   end
+  local out = {}
   for _, entry in ipairs(entries) do
     local rel = entry[1]
     if entry[2] == "file" and rel:match("meta%.json$") then
       local meta = read_json(maki.fs.joinpath(sdir, rel))
-      if meta and meta.id == id then
-        return maki.fs.joinpath(sdir, rel:match("^(.*)/meta%.json$")), meta
+      if meta and meta.id then
+        out[meta.id] = {
+          dir = maki.fs.joinpath(sdir, rel:match("^(.*)/meta%.json$")),
+          meta = meta,
+        }
       end
     end
   end
-  return nil
+  return out
+end
+
+local function find_monitor(session, id)
+  local found = scan_monitors(session)
+  if not found or not found[id] then
+    return nil
+  end
+  return found[id].dir, found[id].meta
 end
 
 -- A spawned job writes its own logs, so the exit path only records the outcome
@@ -122,12 +137,14 @@ local function read_tail(path, lines)
   if not size or size == 0 then
     return nil
   end
-  if size > MAX_TAIL_BYTES then
-    return nil
-  end
-  local text = maki.fs.read(path)
+  -- Ask the host for the last window only; hosts without a windowed read
+  -- answer with the whole file, which still tails correctly.
+  local text = maki.fs.read(path, size > MAX_TAIL_BYTES and { offset = -MAX_TAIL_BYTES } or nil)
   if not text or text == "" then
     return nil
+  end
+  if #text < size then
+    text = text:gsub("^[^\n]*\n", "")
   end
   local all = {}
   for line in text:gmatch("([^\n]*)\n") do
@@ -216,12 +233,6 @@ local function adopt(session)
 end
 
 adopt()
-
--- BISECT: maki.api.create_autocmd("SessionFocusChanged", {
---   callback = function(ev)
---     adopt(ev.data.session_id)
---   end,
--- })
 
 maki.api.register_prompt_hint({
   slot = "tool_usage",
@@ -359,7 +370,10 @@ already exited.]],
     if not info then
       return { llm_output = "error: monitor not found", is_error = true }
     end
-    maki.fn.jobstop(input.id)
+    local ok, err = pcall(maki.fn.jobstop, input.id)
+    if not ok then
+      return { llm_output = "error: " .. tostring(err), is_error = true }
+    end
     return "monitor " .. input.id .. " stopped"
   end,
 })
@@ -367,9 +381,10 @@ already exited.]],
 maki.api.register_tool({
   name = "monitor_list",
   kind = "execute",
-  description = [[List this session's live and recently-exited monitors.
+  description = [[List the monitors this plugin started in this session, live and recently-exited.
 
-Returns each monitor's id, command, pid, status, and how long it ran.]],
+Returns each monitor's id, status, exit code, and how long it ran. Other jobs
+of the session are not monitors and are not listed.]],
   schema = {
     type = "object",
     properties = {
@@ -388,23 +403,33 @@ Returns each monitor's id, command, pid, status, and how long it ran.]],
     if not session then
       return { llm_output = "error: " .. (err or "no session"), is_error = true }
     end
-    local monitors = maki.fn.joblist(session)
-    if #monitors == 0 then
+    local monitors = scan_monitors(session)
+    if not monitors or next(monitors) == nil then
       return "no monitors"
     end
+    local ids = {}
+    for id in pairs(monitors) do
+      ids[#ids + 1] = id
+    end
+    table.sort(ids)
     local lines = {}
-    for _, m in ipairs(monitors) do
-      if m.status == "running" then
+    for _, id in ipairs(ids) do
+      local meta = monitors[id].meta
+      local info = maki.fn.jobinfo(id)
+      if info and info.status == "running" then
         lines[#lines + 1] =
-          string.format("  %d  [%ds]  %s  (pid %d)  session %s", m.id, m.elapsed_secs, m.command, m.pid, m.session)
+          string.format("  %d  [%ds]  %s  (pid %s)", id, info.elapsed_secs, meta.command or "?", info.pid or "?")
       else
+        local elapsed = info and info.elapsed_secs
+        if not elapsed and meta.started and meta.finished then
+          elapsed = meta.finished - meta.started
+        end
         lines[#lines + 1] = string.format(
-          "  %d  exited %d after %ds  %s  session %s",
-          m.id,
-          m.exit_code,
-          m.elapsed_secs,
-          m.command,
-          m.session
+          "  %d  exited %s after %ss  %s",
+          id,
+          info and info.exit_code or meta.exit_code or "?",
+          elapsed or "?",
+          meta.command or "?"
         )
       end
     end
