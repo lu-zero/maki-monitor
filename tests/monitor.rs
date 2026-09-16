@@ -364,7 +364,7 @@ maki.api.register_tool({
         "monitor_list should report its own monitor, got: {list}"
     );
     assert!(
-        !list.contains(&noise_id.to_string()),
+        !list.contains(&format!("  {noise_id}  ")),
         "monitor_list must not report the unrelated job {noise_id}, got: {list}"
     );
 

@@ -269,6 +269,10 @@ maki.api.register_tool({
         type = "integer",
         description = "Trailing lines per stream shown by peek/wait, read from the log files (default 20, 0 disables)",
       },
+      name = {
+        type = "string",
+        description = "Display name for the picker, the transcript item, and the JobStart autocmd. Defaults to the command.",
+      },
     },
   },
   permission = "run",
@@ -301,10 +305,20 @@ maki.api.register_tool({
     end
     maki.fs.mkdir(dir, { parents = true })
 
+    -- Remember which subagent spawned the monitor (nil for the main chat), so
+    -- the /tasks picker can group the job under its spawner.
+    -- Older hosts have no task_id on the context.
+    local spawned_by = ctx.task_id and ctx:task_id() or nil
+    if spawned_by == "main" then
+      spawned_by = nil
+    end
+
     local meta = {
       command = input.command,
+      name = input.name,
       cwd = input.cwd,
       session = session,
+      spawned_by = spawned_by,
       notify_on_success = input.notify_on_success,
       wake = input.wake,
       tail = input.tail,
@@ -312,6 +326,8 @@ maki.api.register_tool({
 
     local ok, id_or_err = pcall(maki.fn.jobstart, input.command, {
       scope = { session = session },
+      spawned_by = spawned_by,
+      name = input.name,
       cwd = input.cwd,
       stdout = maki.fs.joinpath(dir, "stdout.log"),
       stderr = maki.fs.joinpath(dir, "stderr.log"),
@@ -518,5 +534,61 @@ look without parking.]],
     end
     local dir, meta = find_monitor(info.session, input.id)
     return format_snapshot(info, dir, meta)
+  end,
+})
+
+-- Draw the session's monitors: a transcript item per job plus a status bar
+-- segment with the running count. The host hardcodes none of this; the
+-- JobStart/JobExit autocmds plus `maki.ui.chat_item` and
+-- `maki.ui.status_segment` are the whole contract.
+local live = {}
+
+local function refresh_segment()
+  local count = 0
+  for _ in pairs(live) do
+    count = count + 1
+  end
+  if count > 0 then
+    maki.ui.status_segment({ id = "monitors", text = string.format("%d monitoring", count) })
+  else
+    maki.ui.status_segment(nil)
+  end
+end
+
+local function item_id(job_id)
+  return "monitor:" .. job_id
+end
+
+maki.api.create_autocmd({ "JobStart", "JobExit" }, {
+  callback = function(ev)
+    local data = ev.data or {}
+    if data.plugin ~= "monitor" or not data.id then
+      return
+    end
+    if ev.event == "JobStart" then
+      live[data.id] = true
+      maki.ui.chat_item({
+        id = item_id(data.id),
+        label = "monitor",
+        title = data.name or data.command or ("job " .. data.id),
+        status = "running",
+      })
+    else
+      live[data.id] = nil
+      -- -1 is the host's killed-job code: stopping a monitor on purpose is
+      -- not a failure.
+      local code = data.exit_code or "?"
+      -- -1 is the host's killed-job code: stopping a monitor on purpose is
+      -- not a failure.
+      local stopped = code == -1
+      local failed = not stopped and code ~= 0
+      maki.ui.chat_item({
+        id = item_id(data.id),
+        label = "monitor",
+        status = failed and "failed" or "done",
+        detail = stopped and "stopped" or string.format("exited (code %s)", code),
+      })
+    end
+    refresh_segment()
   end,
 })
