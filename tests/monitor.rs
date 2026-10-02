@@ -277,6 +277,10 @@ fn monitor_wait_parks_until_exit_and_reports_the_tail() {
     let session = maki_storage::id::MakiId::generate();
     let sid = session.to_string();
 
+    // Anchor before the spawn: the job's lifetime starts inside the monitor
+    // call, so a deadline measured after it returns would read the wait's
+    // correct park-until-exit as a few ms short.
+    let began = Instant::now();
     let started = exec_tool(
         &reg,
         "monitor",
@@ -289,7 +293,6 @@ fn monitor_wait_parks_until_exit_and_reports_the_tail() {
         .and_then(|s| s.parse().ok())
         .unwrap_or_else(|| panic!("expected a monitor id in: {started}"));
 
-    let began = Instant::now();
     let wait = exec_tool(
         &reg,
         "monitor_wait",
