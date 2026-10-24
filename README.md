@@ -32,9 +32,11 @@ job UI APIs.
 Requires maki 0.4.12 or newer for the basics, and a build carrying the job
 UI APIs (`JobStart`/`JobExit` autocmds, session-routed `chat_item`, status
 bar segments, shared session jobs) for the transcript items, the status
-segment and the `/tasks` entry; the tests pin
-[PR #1329](https://github.com/tontinton/maki/pull/1329) until it lands
-in a release. Add this to `~/.config/maki/init.lua`:
+segment and the `/tasks` entry. To try it before those land in a release,
+run a maki built from the `consolidated/1329-1340` branch of
+[lu-zero/maki](https://github.com/lu-zero/maki/tree/consolidated/1329-1340)
+and pin this pack to the `job-ui` branch; the test suite does exactly that.
+Add this to `~/.config/maki/init.lua`:
 
 ```lua
 maki.pack.add({
