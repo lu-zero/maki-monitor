@@ -23,15 +23,17 @@ While a monitor runs, the session shows it: a `chat_item` in the transcript
 (spinner while it runs, closed with the exit code when it ends) and a
 `N monitors running` segment in the status bar. Both follow the session, so
 a background session's monitors keep their item across tab switches, and
-the segment shows the focused session's count. Requires a maki carrying the
+the segment shows the focused session's count. A running monitor also sits
+in `/tasks` under Jobs, where Ctrl+S stops it. Requires a maki carrying the
 job UI APIs.
 
 ## Install
 
 Requires maki 0.4.12 or newer for the basics, and a build carrying the job
 UI APIs (`JobStart`/`JobExit` autocmds, session-routed `chat_item`, status
-bar segments) for the transcript items and the status segment; the tests
-pin [PR #1329](https://github.com/tontinton/maki/pull/1329) until it lands
+bar segments, shared session jobs) for the transcript items, the status
+segment and the `/tasks` entry; the tests pin
+[PR #1329](https://github.com/tontinton/maki/pull/1329) until it lands
 in a release. Add this to `~/.config/maki/init.lua`:
 
 ```lua

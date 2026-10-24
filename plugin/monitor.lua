@@ -380,6 +380,9 @@ maki.api.register_tool({
 
     local ok, id_or_err = pcall(maki.fn.jobstart, input.command, {
       scope = { session = session },
+      -- Shared so `/tasks` can list a running monitor and stop it, not just
+      -- the plugin that started it.
+      shared = true,
       cwd = input.cwd,
       stdout = maki.fs.joinpath(dir, "stdout.log"),
       stderr = maki.fs.joinpath(dir, "stderr.log"),

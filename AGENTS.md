@@ -1,6 +1,6 @@
 maki-monitor is a standalone maki plugin that supervises long-running commands: monitor, monitor_peek, monitor_wait, monitor_list, monitor_stop. It loads through the maki pack system, not as a builtin.
 
-On a host with the job UI APIs the plugin is also their consumer: each run is a `chat_item` in the session transcript and the focused session's live count is a `status_segment`. The exit path hangs off the `JobExit` autocmd (`data.plugin == "monitor"`), not per-job `on_exit` callbacks, so there is nothing to re-arm: a reload re-registers the autocmd, and `adopt` finalizes only jobs that exited while the plugin was unloaded.
+On a host with the job UI APIs the plugin is also their consumer: each run is a `chat_item` in the session transcript, the focused session's live count is a `status_segment`, and the job is started `shared` so `/tasks` lists it under Jobs and can stop it. The exit path hangs off the `JobExit` autocmd (`data.plugin == "monitor"`), not per-job `on_exit` callbacks, so there is nothing to re-arm: a reload re-registers the autocmd, and `adopt` finalizes only jobs that exited while the plugin was unloaded.
 
 ## Code guidelines
 
