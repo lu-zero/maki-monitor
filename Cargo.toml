@@ -6,8 +6,15 @@ license = "MIT"
 publish = false
 
 [dev-dependencies]
-maki-agent = { git = "https://github.com/tontinton/maki", rev = "b14689365061d7b1c5fb0e6026e32f7cbe7d2a6f" }
-maki-lua = { git = "https://github.com/tontinton/maki", rev = "b14689365061d7b1c5fb0e6026e32f7cbe7d2a6f" }
-maki-storage = { git = "https://github.com/tontinton/maki", rev = "b14689365061d7b1c5fb0e6026e32f7cbe7d2a6f" }
+# The job UI APIs (JobExit autocmds, session-routed chat items, status
+# segments) are not in a tontinton/maki release yet; re-point at it once
+# PR #1329 lands.
+maki-agent = { git = "https://github.com/lu-zero/maki", rev = "fd0dfedc314c732596db4de2ae517dda3f97d5b5" }
+maki-lua = { git = "https://github.com/lu-zero/maki", rev = "fd0dfedc314c732596db4de2ae517dda3f97d5b5" }
+maki-storage = { git = "https://github.com/lu-zero/maki", rev = "fd0dfedc314c732596db4de2ae517dda3f97d5b5" }
 serde_json = "1"
 smol = "2"
+# maki pins luau0-src 0.22.0 in its own lockfile; a newer build of the
+# vendored Luau fails to load text chunks ("mode is 'b'"), so hold the same
+# revision the host is tested against.
+luau0-src = "=0.22.0+luau740"

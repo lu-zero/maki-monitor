@@ -1,6 +1,11 @@
 local MAX_WAIT_MS = 600000
 local MAX_TAIL_BYTES = 262144
 local WAIT_TIMEOUT_ERR = "monitor_wait: timeout_ms must be an integer of at least 1"
+local PLUGIN_NAME = "monitor"
+local ITEM_LABEL = "monitor"
+local ITEM_PREFIX = "monitor-"
+local SEGMENT_ID = "monitors"
+local JOB_KILLED_CODE = -1
 
 local description = [[Spawn a long-running command you own (a test suite, build, or server).
 The command keeps running after this tool returns. You will be notified in this
@@ -111,22 +116,67 @@ local function find_monitor(session, id)
   return found[id].dir, found[id].meta
 end
 
--- A spawned job writes its own logs, so the exit path only records the outcome
--- and notifies. The same closure re-arms after a reload via jobattach.
-local function on_exit_for(session, dir, meta)
-  return function(job_id, code)
-    meta.id = job_id
-    meta.exit_code = code
-    meta.finished = os.time()
-    write_json(maki.fs.joinpath(dir, "meta.json"), meta)
-    if meta.notify_on_success == false and code == 0 then
-      return
+-- A spawned job writes its own logs, so the exit path only records the
+-- outcome and notifies. The JobExit autocmd below runs it, which is also why
+-- it survives reloads without re-arming per-job callbacks.
+local focused
+
+local function live_count(session)
+  local monitors = scan_monitors(session)
+  if not monitors then
+    return 0
+  end
+  local n = 0
+  for _, entry in pairs(monitors) do
+    if entry.meta.exit_code == nil then
+      n = n + 1
     end
+  end
+  return n
+end
+
+local function refresh_segment()
+  local n = focused and live_count(focused) or 0
+  if n > 0 then
+    maki.ui.status_segment({
+      id = SEGMENT_ID,
+      text = string.format("%d monitor%s running", n, n == 1 and "" or "s"),
+    })
+  else
+    maki.ui.status_segment({ id = SEGMENT_ID })
+  end
+end
+
+local function handle_exit(session, id, code)
+  local dir, meta = find_monitor(session, id)
+  if not dir or meta.exit_code then
+    return
+  end
+  meta.exit_code = code
+  meta.finished = os.time()
+  write_json(maki.fs.joinpath(dir, "meta.json"), meta)
+
+  local info = maki.fn.jobinfo(id)
+  local detail
+  if code == JOB_KILLED_CODE then
+    detail = "killed"
+  else
+    detail = string.format("exited with code %d after %ds", code, info and info.elapsed_secs or 0)
+  end
+  maki.ui.chat_item({
+    id = ITEM_PREFIX .. id,
+    session_id = session,
+    status = code == 0 and "done" or "failed",
+    detail = detail,
+  })
+  -- A killed monitor was stopped on purpose; a wake about it is noise.
+  if code ~= JOB_KILLED_CODE and not (meta.notify_on_success == false and code == 0) then
     maki.session.notify(
-      string.format('[job %d] "%s" exited with code %d', job_id, meta.command, code),
+      string.format('[job %d] "%s" exited with code %d', id, meta.command, code),
       { session = session, wake = meta.wake ~= false }
     )
   end
+  refresh_segment()
 end
 
 local function read_tail(path, lines)
@@ -209,30 +259,48 @@ local function format_snapshot(info, dir, meta)
   return text
 end
 
--- Reload drops the Lua exit callbacks, not the monitors. Adoption walks the
--- plugin's job list: running jobs get their callback re-armed and jobs that
--- exited while unloaded still get their meta written and their notification
--- delivered. A UI roundtrip like maki.session.current() would wait forever at
--- load time, so the list is taken without a session filter and each job
--- carries its own session.
-local function adopt(session)
-  local jobs = maki.fn.joblist(session)
+-- Reload drops the plugin's Lua state, not the monitors: session jobs and
+-- their meta stay. Running jobs need nothing, their JobExit autocmd is
+-- registered again by this load; jobs that exited while unloaded are
+-- finalized from the job list. A UI roundtrip like maki.session.current()
+-- would wait forever at load time, so the list is taken without a session
+-- filter and each job carries its own session.
+local function adopt()
+  local jobs = maki.fn.joblist()
   for _, job in ipairs(jobs or {}) do
-    local owner = session or job.session
-    if owner then
-      local dir, meta = find_monitor(owner, job.id)
-      if dir then
-        if job.status == "running" then
-          maki.fn.jobattach(job.id, { on_exit = on_exit_for(owner, dir, meta) })
-        elseif job.status == "exited" and not meta.exit_code then
-          on_exit_for(owner, dir, meta)(job.id, job.exit_code)
-        end
-      end
+    if job.session and job.status == "exited" and job.exit_code ~= nil then
+      handle_exit(job.session, job.id, job.exit_code)
     end
   end
+  refresh_segment()
 end
 
 adopt()
+
+maki.api.create_autocmd("JobExit", {
+  callback = function(ev)
+    local data = ev.data
+    if data.plugin == PLUGIN_NAME and data.exit_code ~= nil then
+      handle_exit(data.session_id, data.id, data.exit_code)
+    end
+  end,
+})
+
+maki.api.create_autocmd("SessionFocusChanged", {
+  callback = function(ev)
+    focused = ev.data.session_id
+    refresh_segment()
+  end,
+})
+
+maki.api.create_autocmd("SessionEnd", {
+  callback = function(ev)
+    if ev.data.session_id == focused then
+      focused = nil
+      refresh_segment()
+    end
+  end,
+})
 
 maki.api.register_prompt_hint({
   slot = "tool_usage",
@@ -315,7 +383,6 @@ maki.api.register_tool({
       cwd = input.cwd,
       stdout = maki.fs.joinpath(dir, "stdout.log"),
       stderr = maki.fs.joinpath(dir, "stderr.log"),
-      on_exit = on_exit_for(session, dir, meta),
     })
     if not ok then
       return { llm_output = "error: " .. tostring(id_or_err), is_error = true }
@@ -327,6 +394,14 @@ maki.api.register_tool({
     meta.pid = info and info.pid
     meta.started = os.time()
     write_json(maki.fs.joinpath(dir, "meta.json"), meta)
+
+    maki.ui.chat_item({
+      id = ITEM_PREFIX .. id,
+      session_id = session,
+      label = ITEM_LABEL,
+      title = input.description or input.command,
+    })
+    refresh_segment()
 
     return "monitor "
       .. id

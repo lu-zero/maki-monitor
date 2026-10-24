@@ -5,3 +5,4 @@ run = true
 fs_read = true
 fs_write = true
 env = true
+agent = true

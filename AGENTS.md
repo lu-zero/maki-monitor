@@ -1,5 +1,7 @@
 maki-monitor is a standalone maki plugin that supervises long-running commands: monitor, monitor_peek, monitor_wait, monitor_list, monitor_stop. It loads through the maki pack system, not as a builtin.
 
+On a host with the job UI APIs the plugin is also their consumer: each run is a `chat_item` in the session transcript and the focused session's live count is a `status_segment`. The exit path hangs off the `JobExit` autocmd (`data.plugin == "monitor"`), not per-job `on_exit` callbacks, so there is nothing to re-arm: a reload re-registers the autocmd, and `adopt` finalizes only jobs that exited while the plugin was unloaded.
+
 ## Code guidelines
 
 - Lua in `plugin/`. No trivial comments, minimal bloat, no unnecessary state.
@@ -10,7 +12,9 @@ maki-monitor is a standalone maki plugin that supervises long-running commands: 
 - Jobs write their own logs: the handler `mkdir`s the monitor directory before `jobstart`, which takes `stdout` and `stderr` file paths. Do not read output back through `on_stdout` callbacks.
 - `meta.json` on disk is the source of truth: it carries `notify_on_success`, `wake`, and `tail`, and `on_exit` rewrites it wholesale. Adoption after a reload rebuilds the exit callback from it.
 - Never call a UI roundtrip (`maki.session.current`, `maki.session.list`) at load time. The UI loop drains `UiAction` between frames only, so a load-time call waits forever. Adoption works around this by listing jobs without a session filter; each job snapshot carries its own session.
+- `status_segment` and `chat_item` are fire-and-forget and safe at load time; the segment shows the focused session's count and `SessionFocusChanged` re-points it.
 - `jobwait` at the pinned revision is timeout-safe: it checks the job's event receiver out and restores it on the way out, delivers `on_stdout`, `on_stderr`, and `on_exit` while parked, and answers an already-exited job from its snapshot. `monitor_peek` is the only read; `monitor_wait` always parks until exit or `timeout_ms` (at least 1, at most 600000), because a parked call holds the turn.
+- A stopped monitor closes as `killed` with exit code -1 and never wakes the session: the stop was the agent's own decision.
 
 ## Testing
 

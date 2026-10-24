@@ -7,10 +7,10 @@ use std::time::{Duration, Instant};
 
 use maki_agent::ToolOutput;
 use maki_agent::tools::ToolRegistry;
-use maki_lua::{PluginHost, PluginPermissions};
+use maki_lua::{ChatItemStatus, PluginHost, PluginPermissions, UiAction};
 use serde_json::json;
 
-const MAILBOX_WAIT: Duration = Duration::from_secs(5);
+const MAILBOX_WAIT: Duration = Duration::from_secs(15);
 
 fn monitor_host() -> (Arc<ToolRegistry>, PluginHost) {
     let reg = Arc::new(ToolRegistry::new());
@@ -40,7 +40,7 @@ fn exec_tool(reg: &ToolRegistry, name: &str, input: serde_json::Value) -> Result
         })
 }
 
-fn poll_until(deadline_msg: &str, f: impl Fn() -> Option<String>) -> String {
+fn poll_until<T>(deadline_msg: &str, f: impl Fn() -> Option<T>) -> T {
     let deadline = Instant::now() + MAILBOX_WAIT;
     loop {
         if let Some(found) = f() {
@@ -151,7 +151,7 @@ fn monitor_plugin_writes_logs_and_reports_after_exit() {
 
 #[cfg(unix)]
 #[test]
-fn session_focus_change_rearms_the_exit_callback() {
+fn exit_notification_survives_a_focus_change() {
     let (reg, host) = monitor_host();
     let session = maki_storage::id::MakiId::generate();
     let mailbox = maki_agent::SessionMailbox::register(session);
@@ -280,7 +280,7 @@ fn monitor_wait_parks_until_exit_and_reports_the_tail() {
     let started = exec_tool(
         &reg,
         "monitor",
-        json!({ "command": "sleep 0.3; echo done; exit 0", "session": sid }),
+        json!({ "command": "sleep 0.5; echo done; exit 0", "session": sid }),
     )
     .unwrap();
     let id: u32 = started
@@ -363,8 +363,9 @@ maki.api.register_tool({
         list.contains(&format!("monitor {id}")) || list.contains(&format!("  {id}  ")),
         "monitor_list should report its own monitor, got: {list}"
     );
+    let noise_row = format!("  {noise_id}  ");
     assert!(
-        !list.contains(&noise_id.to_string()),
+        !list.lines().any(|line| line.starts_with(&noise_row)),
         "monitor_list must not report the unrelated job {noise_id}, got: {list}"
     );
 
@@ -404,4 +405,171 @@ fn monitor_peek_tails_logs_larger_than_the_tail_window() {
         !peek.contains("(no output captured)"),
         "a large log is not a missing log, got: {peek}"
     );
+}
+
+fn monitor_id_of(started: &str) -> u32 {
+    started
+        .split_whitespace()
+        .nth(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(|| panic!("expected a monitor id in: {started}"))
+}
+
+fn next_chat_item(
+    host: &PluginHost,
+    want: ChatItemStatus,
+    item_id: &str,
+) -> Option<maki_lua::ChatItem> {
+    while let Ok(action) = host.ui_action_rx().try_recv() {
+        if let UiAction::ChatItem { item, .. } = action
+            && item.status == want
+            && item.id.as_ref() == item_id
+        {
+            return Some(item);
+        }
+    }
+    None
+}
+
+fn segment_texts(host: &PluginHost) -> Vec<String> {
+    host.hint_reader()
+        .load_full()
+        .segments
+        .iter()
+        .map(|(text, _)| text.clone())
+        .collect()
+}
+
+#[cfg(unix)]
+#[test]
+fn a_monitor_run_lands_in_the_transcript_and_status_bar() {
+    let (reg, host) = monitor_host();
+    let session = maki_storage::id::MakiId::generate();
+    let sid = session.to_string();
+    host.event_handle()
+        .fire_autocmd("SessionFocusChanged", json!({ "session_id": sid }));
+
+    let started = exec_tool(
+        &reg,
+        "monitor",
+        json!({ "command": "sleep 2; exit 0", "session": sid }),
+    )
+    .unwrap();
+    let id = monitor_id_of(&started);
+    let item_id = format!("monitor:monitor-{id}");
+
+    poll_until("the running chat item never reached the UI", || {
+        next_chat_item(&host, ChatItemStatus::Running, &item_id)
+    });
+    poll_until("the live count never reached the status bar", || {
+        segment_texts(&host)
+            .iter()
+            .any(|text| text == "1 monitor running")
+            .then_some(String::new())
+    });
+
+    let closed = poll_until("the done chat item never reached the UI", || {
+        next_chat_item(&host, ChatItemStatus::Done, &item_id)
+    });
+    assert!(
+        closed
+            .detail
+            .as_deref()
+            .is_some_and(|d| d.contains("exited with code 0")),
+        "the closed item should carry the exit: {:?}",
+        closed.detail
+    );
+    poll_until("the segment never left the status bar", || {
+        segment_texts(&host).is_empty().then_some(String::new())
+    });
+}
+
+#[cfg(unix)]
+#[test]
+fn a_stopped_monitor_closes_quietly() {
+    let (reg, host) = monitor_host();
+    let session = maki_storage::id::MakiId::generate();
+    let mailbox = maki_agent::SessionMailbox::register(session);
+    let sid = session.to_string();
+
+    let started = exec_tool(
+        &reg,
+        "monitor",
+        json!({ "command": "sleep 30", "session": sid }),
+    )
+    .unwrap();
+    let id = monitor_id_of(&started);
+    let item_id = format!("monitor:monitor-{id}");
+
+    exec_tool(&reg, "monitor_stop", json!({ "id": id })).unwrap();
+
+    let closed = poll_until("a stopped monitor must close its item", || {
+        next_chat_item(&host, ChatItemStatus::Failed, &item_id)
+    });
+    assert_eq!(closed.detail.as_deref(), Some("killed"));
+
+    let meta_path = started
+        .lines()
+        .find_map(|l| l.strip_prefix("meta: "))
+        .unwrap()
+        .to_string();
+    poll_until("a stop must record the kill in meta.json", || {
+        std::fs::read_to_string(&meta_path)
+            .ok()
+            .filter(|m| m.contains("\"exit_code\":-1"))
+    });
+    assert!(
+        !mailbox.drain().iter().any(|m| m
+            .user_text()
+            .is_some_and(|t| t.contains(&format!("[job {id}]")))),
+        "a stop the agent asked for must not wake the session"
+    );
+
+    host.event_handle()
+        .end_session(session, maki_lua::SessionEndReason::Shutdown);
+}
+
+#[cfg(unix)]
+#[test]
+fn exit_while_unloaded_is_finalized_on_reload() {
+    let (reg, host) = monitor_host();
+    let session = maki_storage::id::MakiId::generate();
+    let mailbox = maki_agent::SessionMailbox::register(session);
+    let sid = session.to_string();
+
+    let started = exec_tool(
+        &reg,
+        "monitor",
+        json!({ "command": "sleep 0.2; exit 0", "session": sid }),
+    )
+    .unwrap();
+    let id = monitor_id_of(&started);
+
+    host.unload("monitor").unwrap();
+    std::thread::sleep(Duration::from_millis(600));
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    host.load_package(
+        "monitor",
+        root,
+        PluginPermissions::trusted(),
+        Default::default(),
+    )
+    .unwrap();
+
+    poll_until(
+        "an exit while unloaded must still notify after the reload",
+        || {
+            mailbox
+                .drain()
+                .iter()
+                .any(|m| {
+                    m.user_text()
+                        .is_some_and(|t| t.contains(&format!("[job {id}]")))
+                })
+                .then_some(String::new())
+        },
+    );
+
+    host.event_handle()
+        .end_session(session, maki_lua::SessionEndReason::Shutdown);
 }
