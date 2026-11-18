@@ -6,16 +6,17 @@ license = "MIT"
 publish = false
 
 [dev-dependencies]
-# The consolidated branch carries tontinton PRs #1329 (job UI APIs: JobExit
-# autocmds, session-routed chat items, status segments) and #1340 plus the
-# shared-jobs change; none of it is in a tontinton/maki release yet, and the
-# shared flag is what lets `/tasks` list and stop a monitor. Re-point at
-# tontinton/maki once the PRs land.
-maki-agent = { git = "https://github.com/lu-zero/maki", rev = "c8e439488d2458cc4daed43250274123ef02b4ae" }
-maki-lua = { git = "https://github.com/lu-zero/maki", rev = "c8e439488d2458cc4daed43250274123ef02b4ae" }
-maki-storage = { git = "https://github.com/lu-zero/maki", rev = "c8e439488d2458cc4daed43250274123ef02b4ae" }
+# This revision of the job-ui branch carries tontinton PR #1329 (JobExit
+# autocmds, session-routed chat items, status segments, shared session jobs).
+# None of it is in a tontinton/maki release yet, and the shared flag is what
+# lets `/tasks` list and stop a monitor. Re-point at tontinton/maki once the
+# PR lands.
+maki-agent = { git = "https://github.com/lu-zero/maki", rev = "213b13e65b660dcbd9faa6ab690e9731d199bbb9" }
+maki-lua = { git = "https://github.com/lu-zero/maki", rev = "213b13e65b660dcbd9faa6ab690e9731d199bbb9" }
+maki-storage = { git = "https://github.com/lu-zero/maki", rev = "213b13e65b660dcbd9faa6ab690e9731d199bbb9" }
 serde_json = "1"
 smol = "2"
+tokio = { version = "1", features = ["sync"] }
 # maki pins luau0-src 0.22.0 in its own lockfile; a newer build of the
 # vendored Luau fails to load text chunks ("mode is 'b'"), so hold the same
 # revision the host is tested against.

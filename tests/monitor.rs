@@ -7,8 +7,10 @@ use std::time::{Duration, Instant};
 
 use maki_agent::ToolOutput;
 use maki_agent::tools::ToolRegistry;
+use maki_lua::agent_autocmd::HostEvent;
 use maki_lua::{ChatItemStatus, PluginHost, PluginPermissions, UiAction};
 use serde_json::json;
+use tokio::sync::mpsc::UnboundedReceiver;
 
 const MAILBOX_WAIT: Duration = Duration::from_secs(15);
 
@@ -40,7 +42,7 @@ fn exec_tool(reg: &ToolRegistry, name: &str, input: serde_json::Value) -> Result
         })
 }
 
-fn poll_until<T>(deadline_msg: &str, f: impl Fn() -> Option<T>) -> T {
+fn poll_until<T>(deadline_msg: &str, mut f: impl FnMut() -> Option<T>) -> T {
     let deadline = Instant::now() + MAILBOX_WAIT;
     loop {
         if let Some(found) = f() {
@@ -169,8 +171,12 @@ fn exit_notification_survives_a_focus_change() {
         .and_then(|s| s.parse().ok())
         .unwrap_or_else(|| panic!("expected a monitor id in: {started}"));
 
-    host.event_handle()
-        .fire_autocmd("SessionFocusChanged", json!({ "session_id": sid }));
+    host.event_handle().fire(
+        Some(&sid),
+        HostEvent::SessionFocusChanged {
+            previous_session_id: None,
+        },
+    );
 
     poll_until(
         "exit notification never arrived after the focus change",
@@ -416,11 +422,11 @@ fn monitor_id_of(started: &str) -> u32 {
 }
 
 fn next_chat_item(
-    host: &PluginHost,
+    ui: &mut UnboundedReceiver<UiAction>,
     want: ChatItemStatus,
     item_id: &str,
 ) -> Option<maki_lua::ChatItem> {
-    while let Ok(action) = host.ui_action_rx().try_recv() {
+    while let Ok(action) = ui.try_recv() {
         if let UiAction::ChatItem { item, .. } = action
             && item.status == want
             && item.id.as_ref() == item_id
@@ -436,7 +442,7 @@ fn segment_texts(host: &PluginHost) -> Vec<String> {
         .load_full()
         .segments
         .iter()
-        .map(|(text, _)| text.clone())
+        .map(|entry| entry.text.clone())
         .collect()
 }
 
@@ -444,10 +450,15 @@ fn segment_texts(host: &PluginHost) -> Vec<String> {
 #[test]
 fn a_monitor_run_lands_in_the_transcript_and_status_bar() {
     let (reg, host) = monitor_host();
+    let mut ui = host.take_ui_action_rx().expect("ui receiver");
     let session = maki_storage::id::MakiId::generate();
     let sid = session.to_string();
-    host.event_handle()
-        .fire_autocmd("SessionFocusChanged", json!({ "session_id": sid }));
+    host.event_handle().fire(
+        Some(&sid),
+        HostEvent::SessionFocusChanged {
+            previous_session_id: None,
+        },
+    );
 
     let started = exec_tool(
         &reg,
@@ -459,7 +470,7 @@ fn a_monitor_run_lands_in_the_transcript_and_status_bar() {
     let item_id = format!("monitor:monitor-{id}");
 
     poll_until("the running chat item never reached the UI", || {
-        next_chat_item(&host, ChatItemStatus::Running, &item_id)
+        next_chat_item(&mut ui, ChatItemStatus::Running, &item_id)
     });
     poll_until("the live count never reached the status bar", || {
         segment_texts(&host)
@@ -469,7 +480,7 @@ fn a_monitor_run_lands_in_the_transcript_and_status_bar() {
     });
 
     let closed = poll_until("the done chat item never reached the UI", || {
-        next_chat_item(&host, ChatItemStatus::Done, &item_id)
+        next_chat_item(&mut ui, ChatItemStatus::Done, &item_id)
     });
     assert!(
         closed
@@ -488,6 +499,7 @@ fn a_monitor_run_lands_in_the_transcript_and_status_bar() {
 #[test]
 fn a_stopped_monitor_closes_quietly() {
     let (reg, host) = monitor_host();
+    let mut ui = host.take_ui_action_rx().expect("ui receiver");
     let session = maki_storage::id::MakiId::generate();
     let mailbox = maki_agent::SessionMailbox::register(session);
     let sid = session.to_string();
@@ -504,7 +516,7 @@ fn a_stopped_monitor_closes_quietly() {
     exec_tool(&reg, "monitor_stop", json!({ "id": id })).unwrap();
 
     let closed = poll_until("a stopped monitor must close its item", || {
-        next_chat_item(&host, ChatItemStatus::Failed, &item_id)
+        next_chat_item(&mut ui, ChatItemStatus::Failed, &item_id)
     });
     assert_eq!(closed.detail.as_deref(), Some("killed"));
 
