@@ -449,7 +449,7 @@ fn segment_texts(host: &PluginHost) -> Vec<String> {
 #[cfg(unix)]
 #[test]
 fn a_monitor_run_lands_in_the_transcript_and_status_bar() {
-    let (reg, host) = monitor_host();
+    let (reg, mut host) = monitor_host();
     let mut ui = host.take_ui_action_rx().expect("ui receiver");
     let session = maki_storage::id::MakiId::generate();
     let sid = session.to_string();
@@ -498,7 +498,7 @@ fn a_monitor_run_lands_in_the_transcript_and_status_bar() {
 #[cfg(unix)]
 #[test]
 fn a_stopped_monitor_closes_quietly() {
-    let (reg, host) = monitor_host();
+    let (reg, mut host) = monitor_host();
     let mut ui = host.take_ui_action_rx().expect("ui receiver");
     let session = maki_storage::id::MakiId::generate();
     let mailbox = maki_agent::SessionMailbox::register(session);

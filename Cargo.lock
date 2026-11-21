@@ -2922,8 +2922,8 @@ dependencies = [
 
 [[package]]
 name = "maki-agent"
-version = "0.7.2"
-source = "git+https://github.com/lu-zero/maki?rev=213b13e65b660dcbd9faa6ab690e9731d199bbb9#213b13e65b660dcbd9faa6ab690e9731d199bbb9"
+version = "0.7.3"
+source = "git+https://github.com/lu-zero/maki?rev=ef08767603ef9ba4fe27ead651f20707e172004d#ef08767603ef9ba4fe27ead651f20707e172004d"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -2965,9 +2965,10 @@ dependencies = [
 
 [[package]]
 name = "maki-config"
-version = "0.7.2"
-source = "git+https://github.com/lu-zero/maki?rev=213b13e65b660dcbd9faa6ab690e9731d199bbb9#213b13e65b660dcbd9faa6ab690e9731d199bbb9"
+version = "0.7.3"
+source = "git+https://github.com/lu-zero/maki?rev=ef08767603ef9ba4fe27ead651f20707e172004d#ef08767603ef9ba4fe27ead651f20707e172004d"
 dependencies = [
+ "arc-swap",
  "dotenvy",
  "globset",
  "inventory",
@@ -2984,8 +2985,8 @@ dependencies = [
 
 [[package]]
 name = "maki-config-macro"
-version = "0.7.2"
-source = "git+https://github.com/lu-zero/maki?rev=213b13e65b660dcbd9faa6ab690e9731d199bbb9#213b13e65b660dcbd9faa6ab690e9731d199bbb9"
+version = "0.7.3"
+source = "git+https://github.com/lu-zero/maki?rev=ef08767603ef9ba4fe27ead651f20707e172004d#ef08767603ef9ba4fe27ead651f20707e172004d"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2994,8 +2995,8 @@ dependencies = [
 
 [[package]]
 name = "maki-highlight"
-version = "0.7.2"
-source = "git+https://github.com/lu-zero/maki?rev=213b13e65b660dcbd9faa6ab690e9731d199bbb9#213b13e65b660dcbd9faa6ab690e9731d199bbb9"
+version = "0.7.3"
+source = "git+https://github.com/lu-zero/maki?rev=ef08767603ef9ba4fe27ead651f20707e172004d#ef08767603ef9ba4fe27ead651f20707e172004d"
 dependencies = [
  "arc-swap",
  "serde_json",
@@ -3007,8 +3008,8 @@ dependencies = [
 
 [[package]]
 name = "maki-interpreter"
-version = "0.7.2"
-source = "git+https://github.com/lu-zero/maki?rev=213b13e65b660dcbd9faa6ab690e9731d199bbb9#213b13e65b660dcbd9faa6ab690e9731d199bbb9"
+version = "0.7.3"
+source = "git+https://github.com/lu-zero/maki?rev=ef08767603ef9ba4fe27ead651f20707e172004d#ef08767603ef9ba4fe27ead651f20707e172004d"
 dependencies = [
  "getrandom 0.4.3",
  "monty",
@@ -3020,8 +3021,8 @@ dependencies = [
 
 [[package]]
 name = "maki-lua"
-version = "0.7.2"
-source = "git+https://github.com/lu-zero/maki?rev=213b13e65b660dcbd9faa6ab690e9731d199bbb9#213b13e65b660dcbd9faa6ab690e9731d199bbb9"
+version = "0.7.3"
+source = "git+https://github.com/lu-zero/maki?rev=ef08767603ef9ba4fe27ead651f20707e172004d#ef08767603ef9ba4fe27ead651f20707e172004d"
 dependencies = [
  "arc-swap",
  "base64 0.23.1",
@@ -3101,8 +3102,8 @@ dependencies = [
 
 [[package]]
 name = "maki-lua-macro"
-version = "0.7.2"
-source = "git+https://github.com/lu-zero/maki?rev=213b13e65b660dcbd9faa6ab690e9731d199bbb9#213b13e65b660dcbd9faa6ab690e9731d199bbb9"
+version = "0.7.3"
+source = "git+https://github.com/lu-zero/maki?rev=ef08767603ef9ba4fe27ead651f20707e172004d#ef08767603ef9ba4fe27ead651f20707e172004d"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3111,8 +3112,8 @@ dependencies = [
 
 [[package]]
 name = "maki-markdown"
-version = "0.7.2"
-source = "git+https://github.com/lu-zero/maki?rev=213b13e65b660dcbd9faa6ab690e9731d199bbb9#213b13e65b660dcbd9faa6ab690e9731d199bbb9"
+version = "0.7.3"
+source = "git+https://github.com/lu-zero/maki?rev=ef08767603ef9ba4fe27ead651f20707e172004d#ef08767603ef9ba4fe27ead651f20707e172004d"
 dependencies = [
  "maki-highlight",
  "unicode-segmentation",
@@ -3134,8 +3135,8 @@ dependencies = [
 
 [[package]]
 name = "maki-otel"
-version = "0.7.2"
-source = "git+https://github.com/lu-zero/maki?rev=213b13e65b660dcbd9faa6ab690e9731d199bbb9#213b13e65b660dcbd9faa6ab690e9731d199bbb9"
+version = "0.7.3"
+source = "git+https://github.com/lu-zero/maki?rev=ef08767603ef9ba4fe27ead651f20707e172004d#ef08767603ef9ba4fe27ead651f20707e172004d"
 dependencies = [
  "http",
  "maki-config",
@@ -3152,8 +3153,8 @@ dependencies = [
 
 [[package]]
 name = "maki-pack"
-version = "0.7.2"
-source = "git+https://github.com/lu-zero/maki?rev=213b13e65b660dcbd9faa6ab690e9731d199bbb9#213b13e65b660dcbd9faa6ab690e9731d199bbb9"
+version = "0.7.3"
+source = "git+https://github.com/lu-zero/maki?rev=ef08767603ef9ba4fe27ead651f20707e172004d#ef08767603ef9ba4fe27ead651f20707e172004d"
 dependencies = [
  "maki-storage",
  "serde",
@@ -3164,8 +3165,8 @@ dependencies = [
 
 [[package]]
 name = "maki-providers"
-version = "0.7.2"
-source = "git+https://github.com/lu-zero/maki?rev=213b13e65b660dcbd9faa6ab690e9731d199bbb9#213b13e65b660dcbd9faa6ab690e9731d199bbb9"
+version = "0.7.3"
+source = "git+https://github.com/lu-zero/maki?rev=ef08767603ef9ba4fe27ead651f20707e172004d#ef08767603ef9ba4fe27ead651f20707e172004d"
 dependencies = [
  "arc-swap",
  "aws-config",
@@ -3201,8 +3202,8 @@ dependencies = [
 
 [[package]]
 name = "maki-storage"
-version = "0.7.2"
-source = "git+https://github.com/lu-zero/maki?rev=213b13e65b660dcbd9faa6ab690e9731d199bbb9#213b13e65b660dcbd9faa6ab690e9731d199bbb9"
+version = "0.7.3"
+source = "git+https://github.com/lu-zero/maki?rev=ef08767603ef9ba4fe27ead651f20707e172004d#ef08767603ef9ba4fe27ead651f20707e172004d"
 dependencies = [
  "bs58",
  "etcetera",
@@ -3383,9 +3384,9 @@ dependencies = [
 
 [[package]]
 name = "monty"
-version = "1.5.0"
+version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd3e3404a0a11ea8669e30dab21b27462554536b29500b75824582ce850ebbbe"
+checksum = "f4f97929e824988444863bed787476e03d7b3d1b21a95c33a9bb31466a67ccd7"
 dependencies = [
  "ahash",
  "chrono",
@@ -3425,9 +3426,9 @@ dependencies = [
 
 [[package]]
 name = "monty-macros"
-version = "1.5.0"
+version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42f92efd684a093a15b538139f8cc82a7c9c7c58fc2aa4733ecf32fd979e44ab"
+checksum = "11f486980c1b8c952f5caa24979e04d64c92732253209c22b65632cbce78ff9c"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3436,9 +3437,9 @@ dependencies = [
 
 [[package]]
 name = "monty-types"
-version = "1.5.0"
+version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a6d36dbb6f4f754e5f12ad3040e5c1d0455aee431f46cd48d36cf309e58691a"
+checksum = "f5ab5cdd7efd4b4e67630d7f80c4ad4268b1808f9341a0e00aa7c7f5061ebfb7"
 dependencies = [
  "chrono",
  "jiff",
