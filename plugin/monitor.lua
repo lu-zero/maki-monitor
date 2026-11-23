@@ -143,7 +143,7 @@ local function refresh_segment()
       text = string.format("%d monitor%s running", n, n == 1 and "" or "s"),
     })
   else
-    maki.ui.status_segment({ id = SEGMENT_ID })
+    maki.ui.status_segment({ id = SEGMENT_ID, remove = true })
   end
 end
 
@@ -165,7 +165,8 @@ local function handle_exit(session, id, code)
   end
   maki.ui.chat_item({
     id = ITEM_PREFIX .. id,
-    session_id = session,
+    session = session,
+    title = meta.description or meta.command,
     status = code == 0 and "done" or "failed",
     detail = detail,
   })
@@ -371,6 +372,7 @@ maki.api.register_tool({
 
     local meta = {
       command = input.command,
+      description = input.description,
       cwd = input.cwd,
       session = session,
       notify_on_success = input.notify_on_success,
@@ -400,7 +402,7 @@ maki.api.register_tool({
 
     maki.ui.chat_item({
       id = ITEM_PREFIX .. id,
-      session_id = session,
+      session = session,
       label = ITEM_LABEL,
       title = input.description or input.command,
     })

@@ -6,14 +6,15 @@ license = "MIT"
 publish = false
 
 [dev-dependencies]
-# This revision of the job-ui branch carries tontinton PR #1329 (JobExit
-# autocmds, session-routed chat items, status segments, shared session jobs),
-# rebased onto current main. None of it is in a tontinton/maki release yet,
-# and the shared flag is what lets `/tasks` list and stop a monitor. Re-point
-# at tontinton/maki once the PR lands.
-maki-agent = { git = "https://github.com/lu-zero/maki", rev = "ef08767603ef9ba4fe27ead651f20707e172004d" }
-maki-lua = { git = "https://github.com/lu-zero/maki", rev = "ef08767603ef9ba4fe27ead651f20707e172004d" }
-maki-storage = { git = "https://github.com/lu-zero/maki", rev = "ef08767603ef9ba4fe27ead651f20707e172004d" }
+# This revision of the job-ui branch carries tontinton PR #1329 after the
+# review: JobStart/JobExit with data.shared, chat_item keyed by session with
+# a required title and a cancelled status, and status_segment removal via
+# remove = true. None of it is in a tontinton/maki release yet. The shared
+# flag is what lets `/tasks` list and stop a monitor. Re-point at
+# tontinton/maki once the PR lands.
+maki-agent = { git = "https://github.com/lu-zero/maki", rev = "556e58adca2c7e685e3072f2f889dca439eb39eb" }
+maki-lua = { git = "https://github.com/lu-zero/maki", rev = "556e58adca2c7e685e3072f2f889dca439eb39eb" }
+maki-storage = { git = "https://github.com/lu-zero/maki", rev = "556e58adca2c7e685e3072f2f889dca439eb39eb" }
 serde_json = "1"
 smol = "2"
 tokio = { version = "1", features = ["sync"] }
