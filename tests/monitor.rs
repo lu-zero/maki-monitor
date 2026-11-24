@@ -44,13 +44,36 @@ fn monitor_host() -> (Arc<ToolRegistry>, PluginHost) {
     monitor_host_from(Path::new(env!("CARGO_MANIFEST_DIR")))
 }
 
+/// The grants a local pack really runs with: what its own plugin.toml asks
+/// for, deny by default the way the pack loader reads a manifest. Loading
+/// with `trusted()` would hide a capability the manifest forgot, which is
+/// how an exit notification can pass here and fail in the field.
+fn manifest_permissions(root: &Path) -> PluginPermissions {
+    let manifest =
+        fs::read_to_string(root.join("plugin.toml")).expect("plugin.toml should be readable");
+    let mut section = "";
+    let mut names = Vec::new();
+    for line in manifest.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            section = line;
+        } else if section == "[permissions]"
+            && let Some((key, value)) = line.split_once('=')
+            && value.trim() == "true"
+        {
+            names.push(key.trim());
+        }
+    }
+    PluginPermissions::from_approved(names)
+}
+
 fn monitor_host_from(root: &Path) -> (Arc<ToolRegistry>, PluginHost) {
     let reg = Arc::new(ToolRegistry::new());
     let host = PluginHost::new(Arc::clone(&reg)).unwrap();
     host.load_package(
         "monitor",
         root,
-        PluginPermissions::trusted(),
+        manifest_permissions(root),
         Default::default(),
     )
     .unwrap();

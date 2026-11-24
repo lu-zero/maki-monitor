@@ -25,7 +25,7 @@ Cheapest first:
 - `just lint`
 - `just test`
 
-Tests live in `tests/monitor.rs` and load the plugin through the real `maki-lua` host with `PluginHost::load_package`, passing the repo root (it derives `plugin/` itself; passing `plugin/` fails with `PackageEmpty`).
+Tests live in `tests/monitor.rs` and load the plugin through the real `maki-lua` host with `PluginHost::load_package`, passing the repo root (it derives `plugin/` itself; passing `plugin/` fails with `PackageEmpty`). They load it under the grants of its own `plugin.toml` (`manifest_permissions`), never `trusted()`: `maki.session.notify` needs `session_write` and `wake` needs `agent` on top, and a manifest without the first passed every test while each exit notification failed in the field.
 
 Dev-dependencies pin a maki revision. Move the pin when the host changes what the plugin uses; re-point at `tontinton/maki` once the relevant code lands there.
 

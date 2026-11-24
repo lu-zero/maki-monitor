@@ -6,3 +6,4 @@ fs_read = true
 fs_write = true
 env = true
 agent = true
+session_write = true
