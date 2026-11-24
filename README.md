@@ -26,8 +26,9 @@ a background session's monitors keep their item across tab switches, and
 the segment shows the focused session's count. A running monitor also sits
 in `/tasks` under Jobs, where Ctrl+S stops it. Requires a maki carrying the
 job UI APIs. A `chat_item` or status segment call the host refuses costs only
-that row or segment: the monitor still starts and its exit still notifies,
-and the refusal is logged as a warning.
+that row or segment, and a refused exit notice costs only the notification:
+the monitor still starts, its record still closes, and each refusal is logged
+as a warning.
 
 ## Install
 

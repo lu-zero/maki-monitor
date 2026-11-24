@@ -39,6 +39,11 @@ maki.fn.jobinfo = function(id)
   return info
 end
 "#;
+const REFUSING_NOTICE: &str = r#"
+maki.session.notify = function()
+  error("session.notify: permission denied")
+end
+"#;
 
 fn monitor_host() -> (Arc<ToolRegistry>, PluginHost) {
     monitor_host_from(Path::new(env!("CARGO_MANIFEST_DIR")))
@@ -681,6 +686,47 @@ fn an_exit_outrunning_its_record_is_still_reported() {
                 })
                 .then_some(String::new())
         },
+    );
+
+    host.event_handle()
+        .end_session(session, maki_lua::SessionEndReason::Shutdown);
+}
+
+/// A host without the grant refuses the exit notice. The record still closes
+/// and the row still lands, and the call that started the job still succeeds:
+/// an exit at once is finalized inside that call.
+#[cfg(unix)]
+#[test]
+fn a_refused_exit_notice_still_closes_the_monitor() {
+    let package = package_with(&format!("{EARLY_EXIT}{REFUSING_NOTICE}"));
+    let (reg, mut host) = monitor_host_from(package.path());
+    let mut ui = host.take_ui_action_rx().expect("ui receiver");
+    let session = maki_storage::id::MakiId::generate();
+    let sid = session.to_string();
+
+    let started = exec_tool(
+        &reg,
+        "monitor",
+        json!({ "command": "sleep 30", "session": sid }),
+    )
+    .expect("a refused notice must not fail the call that started the job");
+    let id = monitor_id_of(&started);
+    let item_id = format!("monitor:monitor-{id}");
+
+    let closed = poll_until("a refused notice cost the monitor its closed row", || {
+        next_chat_item(&mut ui, ChatItemStatus::Done, &item_id)
+    });
+    assert!(
+        closed
+            .detail
+            .as_deref()
+            .is_some_and(|d| d.contains("exited with code 0")),
+        "the closed row should carry the exit: {:?}",
+        closed.detail
+    );
+    poll_until(
+        "a refused notice left the monitor in the status bar",
+        || segment_texts(&host).is_empty().then_some(String::new()),
     );
 
     host.event_handle()

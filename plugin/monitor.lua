@@ -135,12 +135,12 @@ local function live_count(session)
   return n
 end
 
--- A transcript row or a status segment only describes a job that is already
--- running or already exited, so a host that refuses one, say a host on another
--- UI contract, gets a warning and the job goes on: the tool still reports the
--- monitor and its exit still notifies.
-local function post_ui(what, fn, opts)
-  local ok, err = pcall(fn, opts)
+-- A row, a status segment or an exit notice only describes a job that already
+-- runs or already exited, so a host that refuses one, say a host on another UI
+-- contract or without the grant, gets a warning and the job goes on: the tool
+-- still reports the monitor and its record still closes.
+local function attempt(what, fn, ...)
+  local ok, err = pcall(fn, ...)
   if not ok then
     maki.log.warn("monitor: " .. what .. " refused: " .. tostring(err))
   end
@@ -161,7 +161,7 @@ local function refresh_segment()
   if n > 0 then
     opts = { id = SEGMENT_ID, text = string.format("%d monitor%s running", n, n == 1 and "" or "s") }
   end
-  post_ui("status segment", maki.ui.status_segment, opts)
+  attempt("status segment", maki.ui.status_segment, opts)
 end
 
 local function handle_exit(session, id, code)
@@ -183,7 +183,7 @@ local function handle_exit(session, id, code)
   -- The label rides on the closing call too: the host resets it to "item"
   -- when an update leaves it out, and this call creates the row whenever the
   -- running one never reached the transcript.
-  post_ui("exit row for job " .. id, maki.ui.chat_item, {
+  attempt("exit row for job " .. id, maki.ui.chat_item, {
     id = ITEM_PREFIX .. id,
     session = session,
     label = ITEM_LABEL,
@@ -193,9 +193,14 @@ local function handle_exit(session, id, code)
   })
   -- A killed monitor was stopped on purpose; a wake about it is noise.
   if code ~= JOB_KILLED_CODE and not (meta.notify_on_success == false and code == 0) then
-    maki.session.notify(
+    attempt(
+      "exit notice for job " .. id,
+      maki.session.notify,
       string.format('[job %d] "%s" exited with code %d', id, meta.command, code),
-      { session = session, wake = meta.wake ~= false }
+      {
+        session = session,
+        wake = meta.wake ~= false,
+      }
     )
   end
   refresh_segment()
@@ -421,7 +426,7 @@ maki.api.register_tool({
     meta.started = os.time()
     write_json(maki.fs.joinpath(dir, "meta.json"), meta)
 
-    post_ui("row for job " .. id, maki.ui.chat_item, {
+    attempt("row for job " .. id, maki.ui.chat_item, {
       id = ITEM_PREFIX .. id,
       session = session,
       label = ITEM_LABEL,
