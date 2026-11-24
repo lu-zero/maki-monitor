@@ -12,9 +12,9 @@ publish = false
 # remove = true. None of it is in a tontinton/maki release yet. The shared
 # flag is what lets `/tasks` list and stop a monitor. Re-point at
 # tontinton/maki once the PR lands.
-maki-agent = { git = "https://github.com/lu-zero/maki", rev = "556e58adca2c7e685e3072f2f889dca439eb39eb" }
-maki-lua = { git = "https://github.com/lu-zero/maki", rev = "556e58adca2c7e685e3072f2f889dca439eb39eb" }
-maki-storage = { git = "https://github.com/lu-zero/maki", rev = "556e58adca2c7e685e3072f2f889dca439eb39eb" }
+maki-agent = { git = "https://github.com/lu-zero/maki", rev = "229386fb" }
+maki-lua = { git = "https://github.com/lu-zero/maki", rev = "229386fb" }
+maki-storage = { git = "https://github.com/lu-zero/maki", rev = "229386fb" }
 serde_json = "1"
 smol = "2"
 tokio = { version = "1", features = ["sync"] }
