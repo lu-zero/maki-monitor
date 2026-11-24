@@ -1,6 +1,7 @@
 //! Loads the plugin through the real `maki-lua` host as a package, the way
 //! maki itself would after `maki.pack.add`.
 
+use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -14,10 +15,30 @@ use tokio::sync::mpsc::UnboundedReceiver;
 
 const MAILBOX_WAIT: Duration = Duration::from_secs(15);
 
+const EARLY_EXIT: &str = r#"
+local jobinfo = maki.fn.jobinfo
+local early = true
+maki.fn.jobinfo = function(id)
+  local info = jobinfo(id)
+  if early then
+    early = false
+    maki.api.exec_autocmds("JobExit", {
+      data = { id = id, plugin = "monitor", session_id = info.session, exit_code = 0 },
+    })
+  end
+  info.status = "exited"
+  info.exit_code = 0
+  return info
+end
+"#;
+
 fn monitor_host() -> (Arc<ToolRegistry>, PluginHost) {
+    monitor_host_from(Path::new(env!("CARGO_MANIFEST_DIR")))
+}
+
+fn monitor_host_from(root: &Path) -> (Arc<ToolRegistry>, PluginHost) {
     let reg = Arc::new(ToolRegistry::new());
     let host = PluginHost::new(Arc::clone(&reg)).unwrap();
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     host.load_package(
         "monitor",
         root,
@@ -26,6 +47,19 @@ fn monitor_host() -> (Arc<ToolRegistry>, PluginHost) {
     )
     .unwrap();
     (reg, host)
+}
+
+/// This plugin next to a chunk loaded after it, which can stand in for a
+/// host. The `TempDir` owns the package.
+fn package_with(chunk: &str) -> tempfile::TempDir {
+    let package = tempfile::TempDir::new().unwrap();
+    fs::create_dir_all(package.path().join("plugin")).unwrap();
+    let source = Path::new(env!("CARGO_MANIFEST_DIR"));
+    for file in ["plugin.toml", "plugin/monitor.lua"] {
+        fs::copy(source.join(file), package.path().join(file)).unwrap();
+    }
+    fs::write(package.path().join("plugin/zz_after_monitor.lua"), chunk).unwrap();
+    package
 }
 
 fn exec_tool(reg: &ToolRegistry, name: &str, input: serde_json::Value) -> Result<String, String> {
@@ -493,6 +527,55 @@ fn a_monitor_run_lands_in_the_transcript_and_status_bar() {
     poll_until("the segment never left the status bar", || {
         segment_texts(&host).is_empty().then_some(String::new())
     });
+}
+
+/// A job that exits at once has its exit delivered while the handler that
+/// started it is still short of its record, too early for the exit handler
+/// to find. The chunk stands in for that host: the first look at the job
+/// arrives with the exit already fired and the job already booked as exited.
+#[cfg(unix)]
+#[test]
+fn an_exit_outrunning_its_record_is_still_reported() {
+    let package = package_with(EARLY_EXIT);
+    let (reg, host) = monitor_host_from(package.path());
+    let session = maki_storage::id::MakiId::generate();
+    let mailbox = maki_agent::SessionMailbox::register(session);
+    let sid = session.to_string();
+
+    let started = exec_tool(
+        &reg,
+        "monitor",
+        json!({ "command": "sleep 30", "session": sid }),
+    )
+    .unwrap();
+    let id = monitor_id_of(&started);
+    let meta_path = started
+        .lines()
+        .find_map(|l| l.strip_prefix("meta: "))
+        .unwrap()
+        .to_string();
+
+    let meta = fs::read_to_string(&meta_path).unwrap();
+    assert!(
+        meta.contains("\"exit_code\":0"),
+        "the call that started the job must already record its exit: {meta}"
+    );
+    poll_until(
+        "the exit notification never reached the session mailbox",
+        || {
+            mailbox
+                .drain()
+                .iter()
+                .any(|m| {
+                    m.user_text()
+                        .is_some_and(|t| t.contains(&format!("[job {id}]")))
+                })
+                .then_some(String::new())
+        },
+    );
+
+    host.event_handle()
+        .end_session(session, maki_lua::SessionEndReason::Shutdown);
 }
 
 #[cfg(unix)]

@@ -17,6 +17,7 @@ maki-lua = { git = "https://github.com/lu-zero/maki", rev = "229386fb" }
 maki-storage = { git = "https://github.com/lu-zero/maki", rev = "229386fb" }
 serde_json = "1"
 smol = "2"
+tempfile = "3"
 tokio = { version = "1", features = ["sync"] }
 # maki pins luau0-src 0.22.0 in its own lockfile; a newer build of the
 # vendored Luau fails to load text chunks ("mode is 'b'"), so hold the same

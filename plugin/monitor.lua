@@ -408,6 +408,15 @@ maki.api.register_tool({
     })
     refresh_segment()
 
+    -- A job that exits at once has its JobExit delivered while this handler is
+    -- still short of the meta write, too early for the record to be found, so
+    -- the job list gets the last word here, the way adopt() gives it after a
+    -- reload.
+    local state = maki.fn.jobinfo(id)
+    if state and state.status == "exited" then
+      handle_exit(session, id, state.exit_code)
+    end
+
     return "monitor "
       .. id
       .. " started: "
