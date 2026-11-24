@@ -135,16 +135,33 @@ local function live_count(session)
   return n
 end
 
+-- A transcript row or a status segment only describes a job that is already
+-- running or already exited, so a host that refuses one, say a host on another
+-- UI contract, gets a warning and the job goes on: the tool still reports the
+-- monitor and its exit still notifies.
+local function post_ui(what, fn, opts)
+  local ok, err = pcall(fn, opts)
+  if not ok then
+    maki.log.warn("monitor: " .. what .. " refused: " .. tostring(err))
+  end
+end
+
+-- The host refuses a blank title, so a description the model left empty
+-- falls back to the command.
+local function item_title(description, command)
+  if description and description:match("%S") then
+    return description
+  end
+  return command
+end
+
 local function refresh_segment()
   local n = focused and live_count(focused) or 0
+  local opts = { id = SEGMENT_ID, remove = true }
   if n > 0 then
-    maki.ui.status_segment({
-      id = SEGMENT_ID,
-      text = string.format("%d monitor%s running", n, n == 1 and "" or "s"),
-    })
-  else
-    maki.ui.status_segment({ id = SEGMENT_ID, remove = true })
+    opts = { id = SEGMENT_ID, text = string.format("%d monitor%s running", n, n == 1 and "" or "s") }
   end
+  post_ui("status segment", maki.ui.status_segment, opts)
 end
 
 local function handle_exit(session, id, code)
@@ -163,10 +180,14 @@ local function handle_exit(session, id, code)
   else
     detail = string.format("exited with code %d after %ds", code, info and info.elapsed_secs or 0)
   end
-  maki.ui.chat_item({
+  -- The label rides on the closing call too: the host resets it to "item"
+  -- when an update leaves it out, and this call creates the row whenever the
+  -- running one never reached the transcript.
+  post_ui("exit row for job " .. id, maki.ui.chat_item, {
     id = ITEM_PREFIX .. id,
     session = session,
-    title = meta.description or meta.command,
+    label = ITEM_LABEL,
+    title = item_title(meta.description, meta.command),
     status = code == 0 and "done" or "failed",
     detail = detail,
   })
@@ -400,11 +421,11 @@ maki.api.register_tool({
     meta.started = os.time()
     write_json(maki.fs.joinpath(dir, "meta.json"), meta)
 
-    maki.ui.chat_item({
+    post_ui("row for job " .. id, maki.ui.chat_item, {
       id = ITEM_PREFIX .. id,
       session = session,
       label = ITEM_LABEL,
-      title = input.description or input.command,
+      title = item_title(input.description, input.command),
     })
     refresh_segment()
 

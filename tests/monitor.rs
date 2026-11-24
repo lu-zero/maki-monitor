@@ -14,7 +14,15 @@ use serde_json::json;
 use tokio::sync::mpsc::UnboundedReceiver;
 
 const MAILBOX_WAIT: Duration = Duration::from_secs(15);
-
+const ITEM_LABEL: &str = "monitor";
+const REFUSING_UI: &str = r#"
+maki.ui.chat_item = function()
+  error("chat_item: 'session_id' is required")
+end
+maki.ui.status_segment = function()
+  error("status_segment: unexpected key")
+end
+"#;
 const EARLY_EXIT: &str = r#"
 local jobinfo = maki.fn.jobinfo
 local early = true
@@ -524,9 +532,87 @@ fn a_monitor_run_lands_in_the_transcript_and_status_bar() {
         "the closed item should carry the exit: {:?}",
         closed.detail
     );
+    assert_eq!(
+        closed.label.as_ref(),
+        ITEM_LABEL,
+        "the closing call must carry the label: it creates the row whenever the running one never reached the transcript"
+    );
     poll_until("the segment never left the status bar", || {
         segment_texts(&host).is_empty().then_some(String::new())
     });
+}
+
+/// The host refuses a blank title, so a description the model left empty
+/// falls back to the command instead of costing the job its row.
+#[cfg(unix)]
+#[test]
+fn a_blank_description_still_titles_the_row_with_the_command() {
+    let (reg, mut host) = monitor_host();
+    let mut ui = host.take_ui_action_rx().expect("ui receiver");
+    let session = maki_storage::id::MakiId::generate();
+    let sid = session.to_string();
+    let command = "sleep 0.3; exit 0";
+
+    let started = exec_tool(
+        &reg,
+        "monitor",
+        json!({ "command": command, "description": "  ", "session": sid }),
+    )
+    .unwrap();
+    let id = monitor_id_of(&started);
+    let item_id = format!("monitor:monitor-{id}");
+
+    let running = poll_until("a blank description cost the job its row", || {
+        next_chat_item(&mut ui, ChatItemStatus::Running, &item_id)
+    });
+    assert_eq!(running.title, command);
+
+    let closed = poll_until("a blank description cost the closed row too", || {
+        next_chat_item(&mut ui, ChatItemStatus::Done, &item_id)
+    });
+    assert_eq!(closed.title, command);
+
+    host.event_handle()
+        .end_session(session, maki_lua::SessionEndReason::Shutdown);
+}
+
+/// A host on another UI contract refuses the row and the segment for a job
+/// that is already running, so neither refusal may fail the tool or take the
+/// exit notification down with it.
+#[cfg(unix)]
+#[test]
+fn a_refusing_host_still_reports_the_monitor_and_its_exit() {
+    let package = package_with(REFUSING_UI);
+    let (reg, host) = monitor_host_from(package.path());
+    let session = maki_storage::id::MakiId::generate();
+    let mailbox = maki_agent::SessionMailbox::register(session);
+    let sid = session.to_string();
+
+    let started = exec_tool(
+        &reg,
+        "monitor",
+        json!({ "command": "sleep 0.3; exit 0", "session": sid }),
+    )
+    .unwrap();
+    assert!(started.contains("started:"), "got: {started}");
+    let id = monitor_id_of(&started);
+
+    poll_until(
+        "the exit notification never reached the session mailbox",
+        || {
+            mailbox
+                .drain()
+                .iter()
+                .any(|m| {
+                    m.user_text()
+                        .is_some_and(|t| t.contains(&format!("[job {id}]")))
+                })
+                .then_some(String::new())
+        },
+    );
+
+    host.event_handle()
+        .end_session(session, maki_lua::SessionEndReason::Shutdown);
 }
 
 /// A job that exits at once has its exit delivered while the handler that
