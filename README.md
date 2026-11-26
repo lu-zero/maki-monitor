@@ -32,14 +32,13 @@ as a warning.
 
 ## Install
 
-Requires maki 0.4.12 or newer for the basics, and a build carrying the job
-UI APIs (`JobStart`/`JobExit` autocmds, session-routed `chat_item`, status
-bar segments, shared session jobs) for the transcript items, the status
-segment and the `/tasks` entry. To try it before those land in a release,
-run a maki built from the `job-ui-rebuild` branch of
-[lu-zero/maki](https://github.com/lu-zero/maki/tree/job-ui-rebuild), the branch for
-[PR #1329](https://github.com/tontinton/maki/pull/1329), and pin this pack to the `job-ui` branch;
-the test suite pins that exact maki revision.
+Requires maki 0.4.12 or newer for the basics, and a build with the job UI
+APIs (`JobStart`/`JobExit` autocmds, session-routed `chat_item`, status bar
+segments, shared session jobs) for the transcript items, the status segment
+and the `/tasks` entry. Those landed in
+[PR #1329](https://github.com/tontinton/maki/pull/1329) on mainline, so a
+recent maki build has them; no special branch is needed. The test suite pins
+a mainline revision.
 Add this to `~/.config/maki/init.lua`:
 
 ```lua
@@ -145,6 +144,5 @@ The tests load the plugin through the real `maki-lua` host:
 just test
 ```
 
-Dev-dependencies pin a revision of `lu-zero/maki`. Move the pin forward when
-the host gains something the plugin wants, and re-point at `tontinton/maki`
-once the extraction lands there.
+Dev-dependencies pin a revision of `tontinton/maki` mainline. Move the pin
+forward when the host gains something the plugin wants.

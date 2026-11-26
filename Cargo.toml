@@ -6,15 +6,12 @@ license = "MIT"
 publish = false
 
 [dev-dependencies]
-# This revision of the job-ui branch carries tontinton PR #1329 after the
-# review: JobStart/JobExit with data.shared, chat_item keyed by session with
-# a required title and a cancelled status, and status_segment removal via
-# remove = true. None of it is in a tontinton/maki release yet. The shared
-# flag is what lets `/tasks` list and stop a monitor. Re-point at
-# tontinton/maki once the PR lands.
-maki-agent = { git = "https://github.com/lu-zero/maki", rev = "229386fb" }
-maki-lua = { git = "https://github.com/lu-zero/maki", rev = "229386fb" }
-maki-storage = { git = "https://github.com/lu-zero/maki", rev = "229386fb" }
+# PR #1329 landed on maki mainline: JobStart/JobExit carry data.shared,
+# chat_item takes session and title, and status_segment removes with
+# remove = true. Pin mainline so the tests exercise the host we install against.
+maki-agent = { git = "https://github.com/tontinton/maki", rev = "2d84258235167ec7b731e523eac7d431396fa314" }
+maki-lua = { git = "https://github.com/tontinton/maki", rev = "2d84258235167ec7b731e523eac7d431396fa314" }
+maki-storage = { git = "https://github.com/tontinton/maki", rev = "2d84258235167ec7b731e523eac7d431396fa314" }
 serde_json = "1"
 smol = "2"
 tempfile = "3"
