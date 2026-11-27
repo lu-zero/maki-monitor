@@ -6,12 +6,13 @@ license = "MIT"
 publish = false
 
 [dev-dependencies]
-# PR #1329 landed on maki mainline: JobStart/JobExit carry data.shared,
-# chat_item takes session and title, and status_segment removes with
-# remove = true. Pin mainline so the tests exercise the host we install against.
-maki-agent = { git = "https://github.com/tontinton/maki", rev = "2d84258235167ec7b731e523eac7d431396fa314" }
-maki-lua = { git = "https://github.com/tontinton/maki", rev = "2d84258235167ec7b731e523eac7d431396fa314" }
-maki-storage = { git = "https://github.com/tontinton/maki", rev = "2d84258235167ec7b731e523eac7d431396fa314" }
+# The job UI APIs (JobStart/JobExit with data.shared, chat_item taking session
+# and title, status_segment with remove = true) are in PR #1329, merged on maki
+# mainline as 2b6aaeeb AFTER the v0.7.3 tag, so v0.7.3 does not have them yet.
+# Pin that merge commit: the first mainline revision the tests can run against.
+maki-agent = { git = "https://github.com/tontinton/maki", rev = "2b6aaeeb" }
+maki-lua = { git = "https://github.com/tontinton/maki", rev = "2b6aaeeb" }
+maki-storage = { git = "https://github.com/tontinton/maki", rev = "2b6aaeeb" }
 serde_json = "1"
 smol = "2"
 tempfile = "3"

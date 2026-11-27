@@ -36,16 +36,19 @@ Requires maki 0.4.12 or newer for the basics, and a build with the job UI
 APIs (`JobStart`/`JobExit` autocmds, session-routed `chat_item`, status bar
 segments, shared session jobs) for the transcript items, the status segment
 and the `/tasks` entry. Those landed in
-[PR #1329](https://github.com/tontinton/maki/pull/1329) on mainline, so a
-recent maki build has them; no special branch is needed. The test suite pins
-a mainline revision.
+[PR #1329](https://github.com/tontinton/maki/pull/1329) on maki mainline after
+the v0.7.3 tag, so use a maki build from 2026-11-25 or newer (the next release
+tag will include them); the v0.7.3 release does not have them yet. The test
+suite pins the merge commit.
 Add this to `~/.config/maki/init.lua`:
 
 ```lua
 maki.pack.add({
-  { src = "https://github.com/lu-zero/maki-monitor", name = "monitor" },
+  { src = "https://github.com/lu-zero/maki-monitor", name = "monitor", version = "v0.1.0" },
 })
 ```
+
+`version = "v0.1.0"` pins this release; omit it to follow the default branch.
 
 On the next start maki clones the repository, pins the commit in
 `pack-lock.json`, and asks twice: once before installing, once before granting
